@@ -3,11 +3,53 @@ import PDFKit
 import UniformTypeIdentifiers
 import Carbon
 
+final class FlippedView: NSView { override var isFlipped: Bool { true } }
+
 final class ContentView: NSView {
-    var text = "透明文字\n\n在控制面板输入文字，或打开 PDF / Word 文件。\n拖动文字区域可以移动窗口。" { didSet { needsDisplay = true } }
-    var fontSize: CGFloat = 36 { didSet { needsDisplay = true } }
-    var ink = NSColor.white { didSet { needsDisplay = true } }
-    var outlined = true { didSet { needsDisplay = true } }
+    private var scrollingLayout: (NSTextStorage, NSLayoutManager, NSTextContainer, CGFloat)?
+    func scrollLayout() -> (NSLayoutManager, NSTextContainer) {
+        if scrollingLayout == nil || scrollingLayout!.3 != readingArea.width {
+            let storage = NSTextStorage(string: text, attributes: attributes)
+            let layout = NSLayoutManager(); storage.addLayoutManager(layout)
+            let container = NSTextContainer(containerSize: NSSize(width: readingArea.width, height: CGFloat.greatestFiniteMagnitude)); container.lineFragmentPadding = 0
+            layout.addTextContainer(container); layout.ensureLayout(for: container)
+            scrollingLayout = (storage, layout, container, readingArea.width)
+        }
+        return (scrollingLayout!.1, scrollingLayout!.2)
+    }
+    var scrollTextHeight: CGFloat { let (layout, container) = scrollLayout(); return layout.usedRect(for: container).height }
+
+    var text = "透明文字\n\n在控制面板输入文字，或打开 PDF / Word 文件。\n拖动文字区域可以移动窗口。" { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var lineSpacing: CGFloat = 10 { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var weight: NSFont.Weight = .medium { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var alignment: NSTextAlignment = .left { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var backdrop: CGFloat = 0 { didSet { needsDisplay = true } }
+    var textOpacity: CGFloat = 1 { didSet { needsDisplay = true } }
+    var scrollOffset: CGFloat = 0 { didSet { needsDisplay = true } }
+    var continuous = false { didSet { needsDisplay = true } }
+    var countdown = "" { didSet { needsDisplay = true } }
+    var onFile: ((URL) -> Void)?
+    var onResize: (() -> Void)?
+    override init(frame: NSRect) { super.init(frame: frame); registerForDraggedTypes([.fileURL]) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { onFile != nil ? .copy : [] }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let url = (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL])?.first, let handler = onFile else { return false }
+        handler(url); return true
+    }
+    var attributes: [NSAttributedString.Key: Any] {
+        let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.alignment = alignment
+        var values: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize, weight: weight), .foregroundColor: ink, .paragraphStyle: paragraph]
+        if outlined {
+            let rgb = ink.usingColorSpace(.deviceRGB) ?? .white
+            values[.strokeColor] = 0.299*rgb.redComponent + 0.587*rgb.greenComponent + 0.114*rgb.blueComponent > 0.5 ? NSColor.black : NSColor.white
+            values[.strokeWidth] = -3
+        }
+        return values
+    }
+    var fontSize: CGFloat = 36 { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var ink = NSColor.white { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var outlined = true { didSet { scrollingLayout = nil; needsDisplay = true } }
     var adjusting = true { didSet { needsDisplay = true } }
     var readingArea: NSRect { NSRect(x: 24, y: 64, width: max(100, bounds.width-48), height: max(100, bounds.height-88)) }
     var pageImage: NSImage? { didSet { needsDisplay = true } }
@@ -25,7 +67,7 @@ final class ContentView: NSView {
                 let height = max(240, initial.height - now.y+start.y)
                 window.setFrame(NSRect(x: initial.minX, y: initial.maxY-height, width: width, height: height), display: true)
             }
-            (NSApp.delegate as? App)?.reflow()
+            onResize?()
         } else { window.performDrag(with: event) }
     }
     override func draw(_ dirtyRect: NSRect) {
@@ -37,20 +79,24 @@ final class ContentView: NSView {
             ("◢" as NSString).draw(at: NSPoint(x: bounds.width-24, y: bounds.height-28), withAttributes: [.foregroundColor: NSColor.controlAccentColor, .font: NSFont.systemFont(ofSize: 22)])
         }
         let area = readingArea
+        if backdrop > 0 { NSColor.black.withAlphaComponent(backdrop).setFill(); NSBezierPath(roundedRect: area.insetBy(dx: -8, dy: -8), xRadius: 10, yRadius: 10).fill() }
+        NSGraphicsContext.saveGraphicsState(); area.clip()
+        NSGraphicsContext.current?.cgContext.setAlpha(textOpacity)
+        defer { NSGraphicsContext.restoreGraphicsState() }
         if let image = pageImage {
             let ratio = min(area.width / image.size.width, area.height / image.size.height)
             let size = NSSize(width: image.size.width * ratio, height: image.size.height * ratio)
             image.draw(in: NSRect(x: area.midX-size.width/2, y: area.midY-size.height/2, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         } else {
-            let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 10
-            var attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize, weight: .medium), .foregroundColor: ink, .paragraphStyle: paragraph]
-            if outlined {
-                let rgb = ink.usingColorSpace(.deviceRGB) ?? .white
-                let brightness = 0.299*rgb.redComponent + 0.587*rgb.greenComponent + 0.114*rgb.blueComponent
-                attributes[.strokeColor] = brightness > 0.5 ? NSColor.black : NSColor.white
-                attributes[.strokeWidth] = -3
-            }
-            (text as NSString).draw(in: area, withAttributes: attributes)
+            if continuous {
+                let (layout, container) = scrollLayout()
+                let range = layout.glyphRange(forBoundingRect: NSRect(x: 0, y: scrollOffset, width: area.width, height: area.height), in: container)
+                layout.drawGlyphs(forGlyphRange: range, at: NSPoint(x: area.minX, y: area.minY-scrollOffset))
+            } else { (text as NSString).draw(with: area, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes) }
+        }
+        if !countdown.isEmpty {
+            NSColor.black.withAlphaComponent(0.75).setFill(); NSBezierPath(roundedRect: area, xRadius: 12, yRadius: 12).fill()
+            (countdown as NSString).draw(in: area, withAttributes: [.font: NSFont.systemFont(ofSize: 72, weight: .bold), .foregroundColor: NSColor.white])
         }
     }
 }
@@ -69,6 +115,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var passButton: NSButton!
     var toolbar: NSStackView!
     var styleRow: NSStackView!
+    var textLayoutRow: NSStackView!
     var pdfRow: NSStackView!
     var removeWhite: NSButton!
     var fileLabel: NSTextField!
@@ -79,9 +126,55 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var pageStarts: [Int] = []
     var loadGeneration = 0
     var locked = false
+    var sectionPicker: NSSegmentedControl!
+    var sections: [NSView] = []
+    var appearanceDetails: NSStackView!
+    var preferences: NSWindow!
+    var cancelButton: NSButton!
+    var guide: NSWindow?
+    var guideStep = 0
+    var guideOriginalLock = false
+    var guideTitle: NSTextField!
+    var guideBody: NSTextField!
+    var guideProgress: NSTextField!
+    var guideNext: NSButton!
+    var guidePicture: TutorialImage!
+    var guideOriginalSection = 0
+    var stateReady = false
+    let testSuite = "GlassText.Tests." + UUID().uuidString
+    var allowTestPersistence = false
+    var defaults: UserDefaults { testing ? UserDefaults(suiteName: testSuite)! : UserDefaults.standard }
+    var testing: Bool { CommandLine.arguments.contains("--self-test") }
+    var sourceURL: URL?
+    var pageField: NSTextField!
+    var promptButton: NSButton!
+    var speedSlider: NSSlider!
+    var modePicker: NSPopUpButton!
+    var whiteSlider: NSSlider!
+    var fontSlider: NSSlider!
+    var colorWell: NSColorWell!
+    var outlineBox: NSButton!
+    var weightPicker: NSPopUpButton!
+    var alignPicker: NSPopUpButton!
+    var spacingSlider: NSSlider!
+    var opacitySlider: NSSlider!
+    var backdropSlider: NSSlider!
+    var keyPicker: NSPopUpButton!
+    var screenPicker: NSPopUpButton!
+    var timer: Timer?
+    var promptSpeed: Double = 30
+    var promptHeight: CGFloat = 0
+    var countdownRemaining = 0
+    var lastTick = Date()
+    var job: ImportJob?
+    var pdfCache = NSCache<NSString, NSImage>()
+    var restoredPage: Int?
+    var extras: [NSWindow] = []
     var committedLabel = "输入文字，或打开文件开始预览"
 
     func registerRecoveryKey() {
+        if let old = hotkey { UnregisterEventHotKey(old); hotkey = nil }
+        if let old = hotkeyHandler { RemoveEventHandler(old); hotkeyHandler = nil }
         let callback: EventHandlerUPP = { _, _, pointer in
             guard let pointer = pointer else { return OSStatus(eventNotHandledErr) }
             let owner = Unmanaged<App>.fromOpaque(pointer).takeUnretainedValue()
@@ -90,21 +183,24 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         InstallEventHandler(GetApplicationEventTarget(), callback, 1,
             [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))],
             Unmanaged.passUnretained(self).toOpaque(), &hotkeyHandler)
-        let result = RegisterEventHotKey(UInt32(kVK_ANSI_G), UInt32(cmdKey | optionKey | controlKey),
+        let code: UInt32 = keyPicker.indexOfSelectedItem == 1 ? UInt32(kVK_ANSI_T) : keyPicker.indexOfSelectedItem == 2 ? UInt32(kVK_ANSI_R) : UInt32(kVK_ANSI_G)
+        let result = RegisterEventHotKey(code, UInt32(cmdKey | optionKey | controlKey),
             EventHotKeyID(signature: 0x47545854, id: 1), GetApplicationEventTarget(), 0, &hotkey)
-        hotkeyLabel.stringValue = result == noErr ? "全局恢复：⌃⌥⌘G · 解锁并显示控制面板" : "恢复快捷键被占用，请使用菜单栏“透 Aa”恢复"
+        hotkeyLabel.stringValue = result == noErr ? "全局恢复：⌃⌥⌘" + (keyPicker.titleOfSelectedItem ?? "G") + " · 解锁并显示控制面板" : "恢复快捷键被占用，请使用菜单栏“透 Aa”恢复"
     }
     func applicationWillTerminate(_ notification: Notification) {
+        saveState(); job?.cancel(); timer?.invalidate()
         if let key = hotkey { UnregisterEventHotKey(key) }
         if let handler = hotkeyHandler { RemoveEventHandler(handler) }
     }
-    @objc func recover() { setLocked(false); overlay.orderFrontRegardless(); showPanel() }
+    @objc func recover() { pausePrompt(); setLocked(false); overlay.orderFrontRegardless(); showPanel() }
     func setLocked(_ value: Bool) {
+        for window in extras { window.ignoresMouseEvents = value; (window.contentView as? ContentView)?.adjusting = !value }
         locked = value; overlay.ignoresMouseEvents = value; content.adjusting = !value
-        toolbar.isHidden = value; passButton.state = value ? .on : .off
+        toolbar.isHidden = value; passButton.state = value ? .on : .off; passButton.title = value ? "返回调整" : "锁定展示"
         statusItem.button?.title = value ? "透 · 已锁定" : "透 · 调整中"
     }
-    func reflow() { if pdf == nil { paginate(sourceText) } }
+    func reflow() { if pdf == nil && !content.continuous { paginate(sourceText) }; if content.continuous { promptHeight = measuredPromptHeight() }; saveState() }
     func placeWindows() {
         guard let screen = NSScreen.main else { return }
         let frame = screen.visibleFrame
@@ -129,9 +225,17 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         toolbar.wantsLayer = true; toolbar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor; toolbar.layer?.cornerRadius = 8
         toolbar.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(toolbar)
         NSLayoutConstraint.activate([toolbar.topAnchor.constraint(equalTo: content.topAnchor, constant: 12), toolbar.centerXAnchor.constraint(equalTo: content.centerXAnchor)])
-        buildPanel(); sourceText = editor.string; placeWindows(); registerRecoveryKey(); NSApp.activate(ignoringOtherApps: true)
+        buildPanel(); sourceText = editor.string; placeWindows()
+        content.onFile = { [weak self] in self?.load($0) }; content.onResize = { [weak self] in self?.reflow() }
+        pdfCache.totalCostLimit = 64 * 1024 * 1024; pdfCache.countLimit = 8
+        if !testing { restoreState() }; stateReady = true
+        refreshScreens(); registerRecoveryKey()
+        NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NSApp.activate(ignoringOtherApps: true)
         if CommandLine.arguments.contains("--self-test") { selfTest(); NSApp.terminate(nil) }
+        else if !defaults.bool(forKey: "onboardingComplete") { showGuide() }
     }
+    func windowDidMove(_ notification: Notification) { saveState() }
     func windowDidEndLiveResize(_ notification: Notification) { reflow() }
     func selfTest() {
         editor.string = String(repeating: "透明文字 pagination test 中文测试。\n", count: 100)
@@ -186,6 +290,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let original = NSBitmapImageRep(data: content.pageImage!.tiffRepresentation!)!
         precondition(original.colorAt(x: 0, y: 0)!.alphaComponent > 0.99)
         print("PASS: Chinese pagination, reading anchor, draft isolation, lock/recovery, Word import, invalid/empty files, PDF transparency and original-page toggle")
+        featureChecks(directory: temporary, docx: docx)
     }
     func item(_ title: String, _ action: Selector, _ key: String = "") -> NSMenuItem {
         let result = NSMenuItem(title: title, action: action, keyEquivalent: key); result.target = self; return result
@@ -199,6 +304,11 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(item("恢复操作", #selector(recover)))
         menu.addItem(item("显示 / 隐藏", #selector(toggleVisible)))
         menu.addItem(item("上一页", #selector(previous), "[")); menu.addItem(item("下一页", #selector(next), "]"))
+        menu.addItem(item("新建当前页悬浮副本", #selector(newSnapshot)))
+        menu.addItem(item("关闭全部副本", #selector(closeSnapshots)))
+        menu.addItem(item("暂停 / 继续提词", #selector(togglePrompt)))
+        menu.addItem(item("查看更新", #selector(checkUpdates)))
+        menu.addItem(item("新手引导", #selector(showGuide)))
         menu.addItem(.separator()); menu.addItem(item("退出透明文字", #selector(quit), "q"))
         let editItem = NSMenuItem(); editItem.title = "编辑"; main.addItem(editItem)
         let edit = NSMenu(title: "编辑"); editItem.submenu = edit
@@ -209,59 +319,25 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func button(_ title: String, _ action: Selector) -> NSButton { NSButton(title: title, target: self, action: action) }
     func row(_ views: [NSView]) -> NSStackView { let stack = NSStackView(views: views); stack.spacing = 10; return stack }
-    func buildPanel() {
-        panel = NSWindow(contentRect: NSRect(x: 80, y: 180, width: 480, height: 650), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        panel.title = "透明文字 · GlassText"; panel.isReleasedWhenClosed = false; panel.level = .floating
-        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 16
-        stack.translatesAutoresizingMaskIntoConstraints = false; panel.contentView!.addSubview(stack)
-        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 20), stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -20), stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 20)])
-        stack.addArrangedSubview(NSTextField(labelWithString: "让文字浮在桌面上"))
-        stack.addArrangedSubview(row([button("打开 PDF / Word / 文本", #selector(openFile)), button("显示 / 隐藏", #selector(toggleVisible))]))
-        fileLabel = NSTextField(wrappingLabelWithString: "输入文字，或打开文件开始预览")
-        fileLabel.preferredMaxLayoutWidth = 440; fileLabel.font = .systemFont(ofSize: 12)
-        stack.addArrangedSubview(fileLabel)
-        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
-        editor = NSTextView(frame: NSRect(x: 0, y: 0, width: 430, height: 170)); editor.isRichText = false; editor.font = .systemFont(ofSize: 16); editor.string = content.text
-        editor.autoresizingMask = [.width]; scroll.documentView = editor
-        scroll.translatesAutoresizingMaskIntoConstraints = false; scroll.heightAnchor.constraint(equalToConstant: 170).isActive = true; scroll.widthAnchor.constraint(equalToConstant: 440).isActive = true
-        stack.addArrangedSubview(scroll); stack.addArrangedSubview(button("放映输入的文字", #selector(applyText)))
-        let size = NSSlider(value: 36, minValue: 16, maxValue: 96, target: self, action: #selector(changeSize(_:)))
-        let color = NSColorWell(); color.color = .white; color.target = self; color.action = #selector(changeColor(_:))
-        let outline = NSButton(checkboxWithTitle: "描边", target: self, action: #selector(toggleOutline(_:))); outline.state = .on
-        styleRow = row([NSTextField(labelWithString: "字号"), size, NSTextField(labelWithString: "颜色"), color, outline])
-        stack.addArrangedSubview(styleRow)
-        removeWhite = NSButton(checkboxWithTitle: "去除 PDF 白底", target: self, action: #selector(refreshPDF)); removeWhite.state = .on
-        pdfRow = row([removeWhite, NSTextField(labelWithString: "页面自动适应窗口")]); pdfRow.isHidden = true
-        stack.addArrangedSubview(pdfRow)
-        pinButton = NSButton(checkboxWithTitle: "窗口置顶", target: self, action: #selector(togglePin)); pinButton.state = .on
-        passButton = NSButton(checkboxWithTitle: "锁定展示（鼠标穿透）", target: self, action: #selector(togglePass))
-        stack.addArrangedSubview(row([pinButton, passButton, button("重置位置", #selector(resetPosition))]))
-        status = NSTextField(labelWithString: "文字模式")
-        stack.addArrangedSubview(row([button("← 上一页", #selector(previous)), button("下一页 →", #selector(next)), status]))
-        let hint = NSTextField(wrappingLabelWithString: "调整模式：拖动内容移动，拖动右下角缩放。锁定后边框隐藏，鼠标可操作下方应用。Word 仅提取文字；保留版式请先导出 PDF。")
-        hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor; hint.preferredMaxLayoutWidth = 440; stack.addArrangedSubview(hint)
-        hotkeyLabel = NSTextField(labelWithString: ""); hotkeyLabel.font = .systemFont(ofSize: 11); stack.addArrangedSubview(hotkeyLabel)
-        panel.makeKeyAndOrderFront(nil)
-    }
-    @objc func toggleOutline(_ sender: NSButton) { content.outlined = sender.state == .on }
-    @objc func refreshPDF() { render() }
+    @objc func toggleOutline(_ sender: NSButton) { content.outlined = sender.state == .on; saveState() }
+    @objc func refreshPDF() { render(); saveState() }
     @objc func showPanel() { panel.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func quit() { NSApp.terminate(nil) }
-    @objc func togglePin() { overlay.level = pinButton.state == .on ? .floating : .normal }
+    @objc func togglePin() { overlay.level = pinButton.state == .on ? .floating : .normal; saveState() }
     @objc func togglePass() { setLocked(!locked) }
-    @objc func toggleVisible() { if overlay.isVisible { overlay.orderOut(nil) } else { overlay.orderFrontRegardless() } }
+    @objc func toggleVisible() { if overlay.isVisible { pausePrompt(); overlay.orderOut(nil); extras.forEach { $0.orderOut(nil) } } else { overlay.orderFrontRegardless(); extras.forEach { $0.orderFrontRegardless() } } }
     @objc func resetPosition() { placeWindows(); recover() }
     @objc func changeSize(_ sender: NSSlider) { content.fontSize = CGFloat(sender.doubleValue); reflow() }
-    @objc func changeColor(_ sender: NSColorWell) { content.ink = sender.color }
+    @objc func changeColor(_ sender: NSColorWell) { content.ink = sender.color; saveState() }
     @objc func applyText() {
-        loadGeneration += 1; pdf = nil; page = 0; pageStarts = []; sourceText = editor.string
-        committedLabel = "输入文字 · 纯文字展示"; fileLabel.stringValue = committedLabel; paginate(sourceText); overlay.orderFrontRegardless()
+        guard editor.string.utf16.count <= 2_000_000 else { let alert = NSAlert(error: ImportFailure.large); alert.beginSheetModal(for: panel); return }
+        cancelLoad(); exitPrompt(); sourceURL = nil; pdfCache.removeAllObjects(); loadGeneration += 1; pdf = nil; page = 0; pageStarts = []; sourceText = editor.string
+        committedLabel = "输入文字 · 纯文字展示"; fileLabel.stringValue = committedLabel; paginate(sourceText); overlay.orderFrontRegardless(); saveState()
     }
     func paginate(_ text: String) {
         let anchor = pageStarts.indices.contains(page) ? pageStarts[page] : 0
         let width = content.readingArea.width, height = content.readingArea.height
-        let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 10
-        let storage = NSTextStorage(string: text, attributes: [.font: NSFont.systemFont(ofSize: content.fontSize, weight: .medium), .paragraphStyle: paragraph])
+        let storage = NSTextStorage(string: text, attributes: content.attributes)
         let layout = NSLayoutManager(); storage.addLayoutManager(layout)
         textPages = []; pageStarts = []; var consumed = 0
         while consumed < storage.length {
@@ -274,11 +350,16 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         if textPages.isEmpty { textPages = [""]; pageStarts = [0] }; page = pageStarts.lastIndex(where: { $0 <= anchor }) ?? 0; render()
     }
-    @objc func previous() { page = max(0, page-1); render() }
-    @objc func next() { page = min((pdf?.pageCount ?? textPages.count)-1, page+1); page = max(0, page); render() }
+    @objc func previous() { exitPrompt(); page = max(0, page-1); render() }
+    @objc func next() { exitPrompt(); page = min((pdf?.pageCount ?? textPages.count)-1, page+1); page = max(0, page); render() }
     func render() {
-        styleRow.isHidden = pdf != nil; pdfRow.isHidden = pdf == nil
+        styleRow.isHidden = pdf != nil; textLayoutRow.isHidden = pdf != nil; pdfRow.isHidden = pdf == nil
+        promptButton.isEnabled = pdf == nil
+        pageField.stringValue = String(page+1)
+        defer { saveState() }
         if let pdf = pdf, let source = pdf.page(at: page) {
+            let cacheKey = "\(ObjectIdentifier(pdf))-\(page)-\(removeWhite.state.rawValue)-\(Int(whiteSlider.doubleValue*100))" as NSString
+            if let cached = pdfCache.object(forKey: cacheKey) { content.pageImage = cached; status.stringValue = "PDF  \(page+1) / \(pdf.pageCount)"; return }
             let thumbnail = source.thumbnail(of: NSSize(width: 1800, height: 1800), for: .mediaBox)
             guard let tiff = thumbnail.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff), let cg = bitmap.cgImage else { return }
             let w = cg.width, h = cg.height
@@ -288,10 +369,10 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
                 let p = bytes.bindMemory(to: UInt8.self)
                 for i in stride(from: 0, to: p.count, by: 4) {
-                    let white = removeWhite.state == .on ? min(p[i], min(p[i+1], p[i+2])) : 0
+                    let white = removeWhite.state == .on ? UInt8(Double(min(p[i], min(p[i+1], p[i+2]))) * whiteSlider.doubleValue) : 0
                     p[i] -= white; p[i+1] -= white; p[i+2] -= white; p[i+3] = 255-white
                 }
-                if let result = ctx.makeImage() { content.pageImage = NSImage(cgImage: result, size: thumbnail.size) }
+                if let result = ctx.makeImage() { let image = NSImage(cgImage: result, size: thumbnail.size); content.pageImage = image; pdfCache.setObject(image, forKey: cacheKey, cost: w*h*4) }
             }
             status.stringValue = "PDF  \(page+1) / \(pdf.pageCount)"
         } else {
@@ -305,46 +386,33 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         load(url)
     }
     enum Loaded { case pdf(PDFDocument), text(String) }
-    static func read(_ url: URL) throws -> Loaded {
-        func failure(_ message: String) -> NSError { NSError(domain: "GlassText", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
-        if url.pathExtension.lowercased() == "pdf" {
-            guard let document = PDFDocument(url: url) else { throw failure("无法读取 PDF，文件可能已损坏。") }
-            guard !document.isLocked else { throw failure("PDF 已加密，请解锁后重新打开。") }
-            guard document.pageCount > 0 else { throw failure("PDF 没有可显示的页面。") }
-            return .pdf(document)
-        }
-        let text: String
-        if ["doc", "docx", "rtf"].contains(url.pathExtension.lowercased()) {
-            let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/textutil")
-            process.arguments = ["-convert", "txt", "-stdout", url.path]
-            let output = Pipe(); process.standardOutput = output; process.standardError = FileHandle.nullDevice
-            try process.run()
-            let data = output.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-            guard process.terminationStatus == 0, let converted = String(data: data, encoding: .utf8) else { throw failure("文档转换失败，请检查文件是否损坏或加密。") }
-            text = converted
-        } else { text = try String(contentsOf: url) }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw failure("未找到可显示的文字。图片文档请先导出 PDF。") }
-        return .text(text)
+    static func read(_ url: URL, job: ImportJob = ImportJob(), preserveLayout: Bool = false) throws -> Loaded {
+        try DocumentImporter.read(url, job: job, preserveLayout: preserveLayout)
     }
     func load(_ url: URL) {
+        cancelLoad(); let task = ImportJob(); job = task
+        let layout = modePicker.indexOfSelectedItem == 1
         loadGeneration += 1; let generation = loadGeneration
-        fileLabel.stringValue = "正在读取：" + url.lastPathComponent
+        cancelButton.isHidden = false; fileLabel.stringValue = "正在读取：" + url.lastPathComponent
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result { try App.read(url) }
+            let result = Result { try App.read(url, job: task, preserveLayout: layout) }
             DispatchQueue.main.async {
                 guard generation == self.loadGeneration else { return }
+                self.job = nil; self.cancelButton.isHidden = true
                 switch result {
                 case .success(let loaded):
-                    self.page = 0; self.pageStarts = []
+                    self.exitPrompt(); self.sourceURL = url; self.pdfCache.removeAllObjects(); self.page = 0; self.pageStarts = []
                     switch loaded {
                     case .pdf(let document): self.pdf = document; self.render()
                     case .text(let text):
                         self.pdf = nil; self.editor.string = text; self.sourceText = text; self.paginate(text)
                     }
                     self.fileLabel.stringValue = url.lastPathComponent + (self.pdf == nil ? " · 纯文字展示" : " · 保留版式")
-                    self.committedLabel = self.fileLabel.stringValue
+                    if let restored = self.restoredPage { self.page = min(restored, max(0, (self.pdf?.pageCount ?? self.textPages.count)-1)); self.restoredPage = nil; self.render() }
+                    self.committedLabel = self.fileLabel.stringValue; self.saveState()
                     self.overlay.orderFrontRegardless()
                 case .failure(let error):
+                    self.restoredPage = nil
                     self.fileLabel.stringValue = self.committedLabel
                     let alert = NSAlert(error: error); alert.informativeText += "\n原有展示内容已保留。"; alert.beginSheetModal(for: self.panel)
                 }
