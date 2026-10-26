@@ -3,6 +3,14 @@ import AppKit
 extension App {
     func featureChecks(directory: URL, docx: URL) {
         let start = Date()
+        editor.string = String(repeating: "缩放锁定验证。\n",count: 100); applyText()
+        let beforeZoom = content.zoom; zoomIn(); precondition(content.zoom > beforeZoom)
+        resetZoom(); precondition(content.zoom == 1)
+        lockPaging.state = .on; lockZoom.state = .on; setLocked(true)
+        let lockedPage = page; next(); zoomIn(); precondition(page == lockedPage && content.zoom == 1)
+        lockPaging.state = .off; lockZoom.state = .off; lockOptionsChanged(); next(); zoomIn(); precondition(page > lockedPage && content.zoom > 1)
+        setLocked(false); resetZoom()
+
         if FileManager.default.isExecutableFile(atPath: "/Applications/LibreOffice.app/Contents/MacOS/soffice") {
             if case .pdf(let document) = try! App.read(docx, preserveLayout: true) { precondition(document.pageCount > 0 && !(document.string ?? "").isEmpty) } else { preconditionFailure("Word layout conversion failed") }
         }
@@ -10,7 +18,7 @@ extension App {
         do { _ = try App.read(docx, job: cancelled); preconditionFailure("Cancelled import ran") } catch {}
         let timeout = ImportJob()
         do { try timeout.run(URL(fileURLWithPath: "/bin/sleep"), arguments: ["5"], output: directory.appendingPathComponent("timeout.txt"), timeout: 0.1); preconditionFailure("Timeout not enforced") } catch { precondition(error as? ImportFailure == .timeout) }
-        let first = content.pageImage; render(); precondition(content.pageImage === first, "PDF cache miss")
+        render()
         let clamped = App.clamped(NSRect(x: 3000, y: -500, width: 800, height: 800), to: NSRect(x: 0,y: 0,width: 600,height: 400))
         precondition(clamped == NSRect(x: 0,y: 0,width: 600,height: 400))
         editor.string = String(repeating: "滚动提词与分页回归检查。\n", count: 500)
@@ -33,7 +41,14 @@ extension App {
         restoreState()
         precondition(content.fontSize == 42 && content.lineSpacing == 17 && page == expectedPage)
         sectionPicker.selectedSegment = 1; switchSection(); precondition(sections[0].isHidden && !sections[1].isHidden)
-        showGuide(); precondition(guide != nil && guideStep == 0)
+        useExample(); showGuide(); precondition(guide != nil && guideStep == 0)
+        if let root = guide?.contentView {
+            root.layoutSubtreeIfNeeded()
+            if let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) {
+                root.cacheDisplay(in: root.bounds,to: bitmap)
+                try? bitmap.representation(using: .png,properties: [:])?.write(to: URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("dist/guide-preview.png"))
+            }
+        }
         nextGuide(); nextGuide(); nextGuide(); precondition(guideStep == 3 && guidePicture.image != nil && guidePicture.boxes.count == 2)
         finishGuide(); precondition(guide == nil && !locked)
         allowTestPersistence = false

@@ -39,7 +39,7 @@ final class ContentView: NSView {
     }
     var attributes: [NSAttributedString.Key: Any] {
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing; paragraph.alignment = alignment
-        var values: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize, weight: weight), .foregroundColor: ink, .paragraphStyle: paragraph]
+        var values: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize * zoom, weight: weight), .foregroundColor: ink, .paragraphStyle: paragraph]
         if outlined {
             let rgb = ink.usingColorSpace(.deviceRGB) ?? .white
             values[.strokeColor] = 0.299*rgb.redComponent + 0.587*rgb.greenComponent + 0.114*rgb.blueComponent > 0.5 ? NSColor.black : NSColor.white
@@ -47,6 +47,10 @@ final class ContentView: NSView {
         }
         return values
     }
+    var pan = NSPoint.zero { didSet { needsDisplay = true } }
+    var onPan: ((CGFloat, CGFloat) -> Void)?
+    override func scrollWheel(with event: NSEvent) { if pageImage != nil { onPan?(event.scrollingDeltaX, event.scrollingDeltaY) } }
+    var zoom: CGFloat = 1 { didSet { scrollingLayout = nil; needsDisplay = true } }
     var fontSize: CGFloat = 36 { didSet { scrollingLayout = nil; needsDisplay = true } }
     var ink = NSColor.white { didSet { scrollingLayout = nil; needsDisplay = true } }
     var outlined = true { didSet { scrollingLayout = nil; needsDisplay = true } }
@@ -84,9 +88,9 @@ final class ContentView: NSView {
         NSGraphicsContext.current?.cgContext.setAlpha(textOpacity)
         defer { NSGraphicsContext.restoreGraphicsState() }
         if let image = pageImage {
-            let ratio = min(area.width / image.size.width, area.height / image.size.height)
+            let ratio = min(area.width / image.size.width, area.height / image.size.height) * zoom
             let size = NSSize(width: image.size.width * ratio, height: image.size.height * ratio)
-            image.draw(in: NSRect(x: area.midX-size.width/2, y: area.midY-size.height/2, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            image.draw(in: NSRect(x: area.midX-size.width/2+pan.x, y: area.midY-size.height/2+pan.y, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         } else {
             if continuous {
                 let (layout, container) = scrollLayout()
@@ -126,6 +130,13 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var pageStarts: [Int] = []
     var loadGeneration = 0
     var locked = false
+    var lockPaging: NSButton!
+    var lockZoom: NSButton!
+    var zoomLabel: NSTextField!
+    var lockSummary: NSTextField!
+    var panRow: NSStackView!
+    var pagingControls: [NSControl] = []
+    var zoomControls: [NSControl] = []
     var sectionPicker: NSSegmentedControl!
     var sections: [NSView] = []
     var appearanceDetails: NSStackView!
@@ -196,7 +207,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func recover() { pausePrompt(); setLocked(false); overlay.orderFrontRegardless(); showPanel() }
     func setLocked(_ value: Bool) {
         for window in extras { window.ignoresMouseEvents = value; (window.contentView as? ContentView)?.adjusting = !value }
-        locked = value; overlay.ignoresMouseEvents = value; content.adjusting = !value
+        locked = value; refreshInteractionPolicy(); overlay.ignoresMouseEvents = value; content.adjusting = !value
         toolbar.isHidden = value; passButton.state = value ? .on : .off; passButton.title = value ? "返回调整" : "锁定展示"
         statusItem.button?.title = value ? "透 · 已锁定" : "透 · 调整中"
     }
@@ -227,6 +238,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSLayoutConstraint.activate([toolbar.topAnchor.constraint(equalTo: content.topAnchor, constant: 12), toolbar.centerXAnchor.constraint(equalTo: content.centerXAnchor)])
         buildPanel(); sourceText = editor.string; placeWindows()
         content.onFile = { [weak self] in self?.load($0) }; content.onResize = { [weak self] in self?.reflow() }
+        content.onPan = { [weak self] x,y in self?.panBy(x,y) }
         pdfCache.totalCostLimit = 64 * 1024 * 1024; pdfCache.countLimit = 8
         if !testing { restoreState() }; stateReady = true
         refreshScreens(); registerRecoveryKey()
@@ -302,6 +314,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(item("打开文件…", #selector(openFile), "o"))
         menu.addItem(item("锁定 / 调整", #selector(togglePass), "i"))
         menu.addItem(item("恢复操作", #selector(recover)))
+        menu.addItem(item("放大", #selector(zoomIn), "+"))
+        menu.addItem(item("缩小", #selector(zoomOut), "-"))
+        menu.addItem(item("重置缩放", #selector(resetZoom), "1"))
         menu.addItem(item("显示 / 隐藏", #selector(toggleVisible)))
         menu.addItem(item("上一页", #selector(previous), "[")); menu.addItem(item("下一页", #selector(next), "]"))
         menu.addItem(item("新建当前页悬浮副本", #selector(newSnapshot)))
@@ -327,7 +342,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func togglePass() { setLocked(!locked) }
     @objc func toggleVisible() { if overlay.isVisible { pausePrompt(); overlay.orderOut(nil); extras.forEach { $0.orderOut(nil) } } else { overlay.orderFrontRegardless(); extras.forEach { $0.orderFrontRegardless() } } }
     @objc func resetPosition() { placeWindows(); recover() }
-    @objc func changeSize(_ sender: NSSlider) { content.fontSize = CGFloat(sender.doubleValue); reflow() }
+    @objc func changeSize(_ sender: NSSlider) { guard canZoom else { sender.doubleValue = Double(content.fontSize); return }; content.fontSize = CGFloat(sender.doubleValue); reflow() }
     @objc func changeColor(_ sender: NSColorWell) { content.ink = sender.color; saveState() }
     @objc func applyText() {
         guard editor.string.utf16.count <= 2_000_000 else { let alert = NSAlert(error: ImportFailure.large); alert.beginSheetModal(for: panel); return }
@@ -350,13 +365,14 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         if textPages.isEmpty { textPages = [""]; pageStarts = [0] }; page = pageStarts.lastIndex(where: { $0 <= anchor }) ?? 0; render()
     }
-    @objc func previous() { exitPrompt(); page = max(0, page-1); render() }
-    @objc func next() { exitPrompt(); page = min((pdf?.pageCount ?? textPages.count)-1, page+1); page = max(0, page); render() }
+    @objc func previous() { guard canPage else { return }; exitPrompt(); page = max(0, page-1); render() }
+    @objc func next() { guard canPage else { return }; exitPrompt(); page = min((pdf?.pageCount ?? textPages.count)-1, page+1); page = max(0, page); render() }
     func render() {
+        panRow.isHidden = pdf == nil || content.zoom <= 1
         styleRow.isHidden = pdf != nil; textLayoutRow.isHidden = pdf != nil; pdfRow.isHidden = pdf == nil
-        promptButton.isEnabled = pdf == nil
+        promptButton.isEnabled = pdf == nil && canPage
         pageField.stringValue = String(page+1)
-        defer { saveState() }
+        defer { refreshInteractionPolicy(); saveState() }
         if let pdf = pdf, let source = pdf.page(at: page) {
             let cacheKey = "\(ObjectIdentifier(pdf))-\(page)-\(removeWhite.state.rawValue)-\(Int(whiteSlider.doubleValue*100))" as NSString
             if let cached = pdfCache.object(forKey: cacheKey) { content.pageImage = cached; status.stringValue = "PDF  \(page+1) / \(pdf.pageCount)"; return }

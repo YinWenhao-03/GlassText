@@ -1,10 +1,13 @@
 import AppKit
 
+final class GuideSurface: NSView { override func draw(_ dirtyRect: NSRect) { NSColor.windowBackgroundColor.setFill(); dirtyRect.fill() } }
+
 extension App {
     @objc func showGuide() {
         guard guide == nil else { guide?.makeKeyAndOrderFront(nil); return }
         pausePrompt(); guideOriginalLock = locked; guideOriginalSection = sectionPicker.selectedSegment; setLocked(false)
         let window = NSWindow(contentRect: NSRect(x: 0,y: 0,width: 780,height: 600),styleMask: [.titled],backing: .buffered,defer: false)
+        window.contentView = GuideSurface(frame: NSRect(x: 0,y: 0,width: 780,height: 600))
         window.title = "新手引导 · 跟着红框操作"; window.isReleasedWhenClosed = false; window.level = .floating; guide = window; guideStep = 0
         guideProgress = note("")
         guideTitle = NSTextField(labelWithString: ""); guideTitle.font = .systemFont(ofSize: 21,weight: .semibold)
