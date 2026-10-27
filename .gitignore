@@ -2,3 +2,7 @@
 dist/
 .DS_Store
 node_modules/
+
+# Local scratch material is never part of a release.
+.work/
+/*.docx

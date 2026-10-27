@@ -20,6 +20,11 @@ jobs:
           cache-dependency-path: windows/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Renderer integration (not native UI acceptance)
+        shell: pwsh
+        run: |
+          $env:GLASSTEXT_BROWSER = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+          npm run test:browser
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
