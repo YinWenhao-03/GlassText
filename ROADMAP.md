@@ -1,6 +1,6 @@
 # 后续计划
 
-逐项完成情况见 [P2 发行验收](docs/P2_ACCEPTANCE.md)。v0.6 是预览版，未宣布全部 P2 完成。
+发行进度见 [发布清单](docs/P2_ACCEPTANCE.md)。
 
 ## 已实现
 
@@ -10,9 +10,9 @@ Windows v0.6：在 v0.5 基础上新增提词、Word 保留版式、PDF 去白�
 
 ## 下一步
 
-- 获取签名凭据后完成 Apple Developer ID / 公证与 Windows 签名。
+- 完成 Apple Developer ID / 公证与 Windows 签名。
 - Windows、Intel Mac、多屏和高 DPI 实机验收；复杂文档、读屏与长时间测试。
 - 自动更新安装器和安全回滚。
 - 多独立文档窗口，Mac 任意快捷键录制。
 - 大文档进度、资源占用基准及真实用户试用反馈。
-- 获得 workflow 权限后启用 Windows 自动构建/测试。
+- 启用 Windows 自动构建与测试。

@@ -114,6 +114,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var pdf: PDFDocument?
     var page = 0
     var textPages: [String] = []
+    var brandIcon: NSImage?
     var statusItem: NSStatusItem!
     var pinButton: NSButton!
     var passButton: NSButton!
@@ -225,6 +226,8 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        brandIcon = AppArtwork.load()
+        if let icon = brandIcon { NSApp.applicationIconImage = icon; NSApp.dockTile.display() }
         buildMenu()
         overlay = NSWindow(contentRect: NSRect(x: 240, y: 180, width: 900, height: 600), styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
         overlay.isOpaque = false; overlay.backgroundColor = .clear; overlay.hasShadow = false

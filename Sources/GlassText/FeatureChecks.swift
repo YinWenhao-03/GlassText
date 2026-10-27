@@ -3,6 +3,22 @@ import AppKit
 extension App {
     func featureChecks(directory: URL, docx: URL) {
         let start = Date()
+        precondition(brandIcon != nil && brandIcon!.isValid, "Bundled app artwork is missing")
+        func iconPixels(_ image: NSImage) -> [UInt8] {
+            let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 64, pixelsHigh: 64, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+            NSGraphicsContext.current?.cgContext.clear(NSRect(x: 0, y: 0, width: 64, height: 64))
+            image.draw(in: NSRect(x: 0, y: 0, width: 64, height: 64))
+            NSGraphicsContext.restoreGraphicsState()
+            return Array(UnsafeBufferPointer(start: bitmap.bitmapData!, count: bitmap.bytesPerRow * bitmap.pixelsHigh))
+        }
+        let actualIcon = iconPixels(NSApp.applicationIconImage), expectedIcon = iconPixels(brandIcon!)
+        precondition(actualIcon.count == expectedIcon.count)
+        // AppKit can copy and colour-convert the image when assigning it to the Dock.
+        let averageDifference = zip(actualIcon, expectedIcon).reduce(0.0) { $0 + abs(Double($1.0) - Double($1.1)) } / Double(actualIcon.count)
+        precondition(averageDifference < 2, "Dock artwork differs from bundled icon")
+        print("PASS: Dock artwork matches bundled icon (mean channel difference \(averageDifference))")
         editor.string = String(repeating: "缩放锁定验证。\n",count: 100); applyText()
         let beforeZoom = content.zoom; zoomIn(); precondition(content.zoom > beforeZoom)
         resetZoom(); precondition(content.zoom == 1)

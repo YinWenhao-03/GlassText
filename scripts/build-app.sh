@@ -10,7 +10,8 @@ done
 arm_bin=$(swift build -c release --arch arm64 --scratch-path .build/arm64 --show-bin-path)
 intel_bin=$(swift build -c release --arch x86_64 --scratch-path .build/x86_64 --show-bin-path)
 lipo -create "$arm_bin/GlassText" "$intel_bin/GlassText" -output "$APP/Contents/MacOS/GlassText"
-cp Assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Assets/AppIcon.icns "$APP/Contents/Resources/GlassText.icns"
+rm -f "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -19,10 +20,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.yinwenhao.glasstext</string>
 <key>CFBundleName</key><string>GlassText</string>
 <key>CFBundleDisplayName</key><string>透明文字</string>
-<key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleIconFile</key><string>GlassText.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.6.0</string>
-<key>CFBundleVersion</key><string>6</string>
+<key>CFBundleShortVersionString</key><string>0.6.1</string>
+<key>CFBundleVersion</key><string>7</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

@@ -28,7 +28,7 @@ extension App {
         panel.title = "透明文字"; panel.isReleasedWhenClosed = false; panel.level = .floating
         let surface = DropSurface(frame: panel.contentView!.bounds); surface.receive = { [weak self] in self?.load($0) }; panel.contentView = surface
         let heading = NSTextField(labelWithString: "透明文字"); heading.font = .systemFont(ofSize: 22, weight: .semibold)
-        let symbol = NSImageView(); symbol.image = NSImage(named: NSImage.Name("AppIcon")) ?? NSApp.applicationIconImage
+        let symbol = NSImageView(); symbol.image = brandIcon ?? NSApp.applicationIconImage
         symbol.widthAnchor.constraint(equalToConstant: 42).isActive = true; symbol.heightAnchor.constraint(equalToConstant: 42).isActive = true
         sectionPicker = NSSegmentedControl(labels: ["内容", "外观", "提词"], trackingMode: .selectOne, target: self, action: #selector(switchSection)); sectionPicker.selectedSegment = 0
         sectionPicker.segmentStyle = .rounded; sectionPicker.widthAnchor.constraint(equalToConstant: 392).isActive = true
