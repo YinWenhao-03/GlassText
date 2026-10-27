@@ -253,6 +253,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         else if !defaults.bool(forKey: "onboardingComplete") { showGuide() }
     }
     func windowDidMove(_ notification: Notification) { updateUnlockButton(); saveState() }
+    func windowDidResize(_ notification: Notification) { updateUnlockButton() }
     func windowDidEndLiveResize(_ notification: Notification) { updateUnlockButton(); reflow() }
     func selfTest() {
         editor.string = String(repeating: "透明文字 pagination test 中文测试。\n", count: 100)

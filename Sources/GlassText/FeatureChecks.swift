@@ -25,6 +25,14 @@ extension App {
         lockPaging.state = .on; lockZoom.state = .on; setLocked(true)
         precondition(unlockPanel?.isVisible == true && overlay.ignoresMouseEvents)
         precondition(unlockPanel?.ignoresMouseEvents == false)
+        precondition(unlockPanel?.parent === overlay)
+        precondition((unlockPanel?.contentView as? NSButton)?.title == "解锁 · 返回调整")
+        let originalFrame = overlay.frame
+        overlay.setFrameOrigin(NSPoint(x: originalFrame.minX + 20, y: originalFrame.minY))
+        updateUnlockButton()
+        let screenFrame = (overlay.screen ?? NSScreen.main)!.visibleFrame
+        precondition(screenFrame.contains(unlockPanel!.frame))
+        overlay.setFrame(originalFrame, display: true)
         toggleVisible(); precondition(unlockPanel?.isVisible == false)
         toggleVisible(); precondition(unlockPanel?.isVisible == true)
         (unlockPanel?.contentView as? NSButton)?.performClick(nil)
