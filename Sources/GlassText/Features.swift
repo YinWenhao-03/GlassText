@@ -64,7 +64,7 @@ extension App {
             let target = NSScreen.screens.max { $0.visibleFrame.intersection(window.frame).size.area < $1.visibleFrame.intersection(window.frame).size.area } ?? main
             window.setFrame(Self.clamped(window.frame, to: target.visibleFrame), display: true)
         }
-        refreshScreens(); reflow()
+        refreshScreens(); updateUnlockButton(); reflow()
     }
     @objc func moveScreen() {
         let i = screenPicker.indexOfSelectedItem

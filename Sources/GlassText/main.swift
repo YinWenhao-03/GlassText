@@ -114,6 +114,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var pdf: PDFDocument?
     var page = 0
     var textPages: [String] = []
+    var unlockPanel: NSPanel?
     var brandIcon: NSImage?
     var statusItem: NSStatusItem!
     var pinButton: NSButton!
@@ -211,6 +212,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         locked = value; refreshInteractionPolicy(); overlay.ignoresMouseEvents = value; content.adjusting = !value
         toolbar.isHidden = value; passButton.state = value ? .on : .off; passButton.title = value ? "返回调整" : "锁定展示"
         statusItem.button?.title = value ? "透 · 已锁定" : "透 · 调整中"
+        updateUnlockButton()
     }
     func reflow() { if pdf == nil && !content.continuous { paginate(sourceText) }; if content.continuous { promptHeight = measuredPromptHeight() }; saveState() }
     func placeWindows() {
@@ -250,8 +252,8 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if CommandLine.arguments.contains("--self-test") { selfTest(); NSApp.terminate(nil) }
         else if !defaults.bool(forKey: "onboardingComplete") { showGuide() }
     }
-    func windowDidMove(_ notification: Notification) { saveState() }
-    func windowDidEndLiveResize(_ notification: Notification) { reflow() }
+    func windowDidMove(_ notification: Notification) { updateUnlockButton(); saveState() }
+    func windowDidEndLiveResize(_ notification: Notification) { updateUnlockButton(); reflow() }
     func selfTest() {
         editor.string = String(repeating: "透明文字 pagination test 中文测试。\n", count: 100)
         applyText()
@@ -341,9 +343,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func refreshPDF() { render(); saveState() }
     @objc func showPanel() { panel.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func quit() { NSApp.terminate(nil) }
-    @objc func togglePin() { overlay.level = pinButton.state == .on ? .floating : .normal; saveState() }
+    @objc func togglePin() { overlay.level = pinButton.state == .on ? .floating : .normal; updateUnlockButton(); saveState() }
     @objc func togglePass() { setLocked(!locked) }
-    @objc func toggleVisible() { if overlay.isVisible { pausePrompt(); overlay.orderOut(nil); extras.forEach { $0.orderOut(nil) } } else { overlay.orderFrontRegardless(); extras.forEach { $0.orderFrontRegardless() } } }
+    @objc func toggleVisible() { if overlay.isVisible { pausePrompt(); overlay.orderOut(nil); extras.forEach { $0.orderOut(nil) } } else { overlay.orderFrontRegardless(); extras.forEach { $0.orderFrontRegardless() } }; updateUnlockButton() }
     @objc func resetPosition() { placeWindows(); recover() }
     @objc func changeSize(_ sender: NSSlider) { guard canZoom else { sender.doubleValue = Double(content.fontSize); return }; content.fontSize = CGFloat(sender.doubleValue); reflow() }
     @objc func changeColor(_ sender: NSColorWell) { content.ink = sender.color; saveState() }
