@@ -56,4 +56,4 @@ jobs:
         run: |
           cd release-assets
           sha256sum *.zip > SHA256SUMS.txt
-          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "GlassText $RELEASE_TAG" --notes-file ../docs/RELEASE_v0.6.4.md *.zip SHA256SUMS.txt
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "GlassText $RELEASE_TAG" --notes-file ../docs/RELEASE_v0.6.5.md *.zip SHA256SUMS.txt

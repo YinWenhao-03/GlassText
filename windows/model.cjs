@@ -1,4 +1,4 @@
-const defaults = {locked:false, lockPaging:false, lockZoom:false, zoom:1, page:0, pages:1, topmost:true, visible:true, color:'#000000', font:36, outline:false, removeWhite:true, preserveLayout:false, promptMode:false, prompting:false, speed:30,whiteStrength:1,opacity:1,backdrop:0,spacing:0,weight:'400',alignment:'left'};
+const defaults = {locked:false, lockPaging:false, lockZoom:false, zoom:1, page:0, pages:1, topmost:true, visible:true, color:'#000000', font:36, outline:false, removeWhite:true, preserveLayout:false, promptMode:false, prompting:false, speed:30,whiteStrength:1,opacity:1,backdrop:0,spacing:10,weight:'500',alignment:'left'};
 function reduce(state, command, value) {
   const s = {...defaults, ...state};
   const canPage = !s.locked || !s.lockPaging, canZoom = !s.locked || !s.lockZoom;
@@ -7,8 +7,8 @@ function reduce(state, command, value) {
   if (['locked','lockPaging','lockZoom','topmost','visible','outline','removeWhite','preserveLayout','promptMode'].includes(command) && typeof value === 'boolean') s[command] = value;
   if (command === 'font' && canZoom && Number.isFinite(value)) s.font = Math.min(96,Math.max(16,value));
   if (command === 'color' && /^#[0-9a-f]{6}$/i.test(value)) s.color = value;
-  if (['whiteStrength','opacity','backdrop'].includes(command) && Number.isFinite(value)) s[command]=Math.min(1,Math.max(command==='opacity'?.1:0,value));
-  if (command==='spacing' && Number.isFinite(value)) s.spacing=Math.min(30,Math.max(0,value));
+  if (['whiteStrength','opacity','backdrop'].includes(command) && Number.isFinite(value)) s[command]=Math.min(command==='backdrop'?.85:1,Math.max(command==='opacity'?.15:0,value));
+  if (command==='spacing' && Number.isFinite(value)) s.spacing=Math.min(32,Math.max(0,value));
   if (command==='weight' && ['400','500','700'].includes(value)) s.weight=value;
   if (command==='alignment' && ['left','center','right'].includes(value)) s.alignment=value;
   if (command === 'speed' && Number.isFinite(value)) s.speed = Math.min(100,Math.max(5,value));

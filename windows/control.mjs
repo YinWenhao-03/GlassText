@@ -4,6 +4,16 @@ document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>tab(el.datase
 function paint(s){state=s;if(s.displays){const select=$('display'),prior=select.value;select.replaceChildren(...s.displays.map(d=>{const option=document.createElement('option');option.value=d.id;option.textContent=d.label;return option;}));select.value=String(s.displayId||prior);}$('mode').textContent=s.locked?'已锁定 · 鼠标穿透；点击“返回调整”恢复':'调整中 · 拖动展示窗口顶部移动';$('lock').textContent=s.locked?'返回调整':'锁定展示';$('pageStatus').textContent=`${s.page+1} / ${s.pages}`;$('page').value=s.page+1;$('zoom').textContent=Math.round(s.zoom*100)+'%';$('visible').textContent=s.visible?'隐藏':'显示';for(const key of ['topmost','outline','lockPaging','lockZoom','removeWhite','preserveLayout','promptMode'])$(key).checked=s[key];for(const key of ['weight','alignment','spacing','opacity','backdrop','whiteStrength'])$(key).value=s[key];$('speed').value=s.speed;$('prompting').textContent=s.prompting?'暂停提词':'开始提词';$('prompting').disabled=currentDoc?.kind!=='text'||!s.promptMode||(s.locked&&s.lockPaging);$('promptReset').disabled=s.locked&&s.lockPaging;$('promptMode').disabled=currentDoc?.kind==='pdf'||(s.locked&&s.lockPaging);$('font').value=s.font;$('color').value=s.color;for(const key of ['prev','next','page','jump'])$(key).disabled=s.locked&&s.lockPaging;for(const key of ['minus','plus','fit','font','panLeft','panUp','panDown','panRight'])$(key).disabled=s.locked&&s.lockZoom;$('font').disabled=currentDoc?.kind==='pdf'||(s.locked&&s.lockZoom);$('hotkey').textContent=s.hotkeyAvailable?'全局恢复：'+(s.shortcut||'Control+Alt+G'):'恢复快捷键被占用，请用任务栏托盘“恢复操作”。';}
 for(const [id,delta] of [['panLeft',[-80,0]],['panRight',[80,0]],['panUp',[0,-80]],['panDown',[0,80]]])$(id).onclick=()=>window.glass.action('pan',delta);
 const action=(key,value)=>window.glass.action(key,value);
+$('whiteText').onclick=()=>action('color','#ffffff');$('blackText').onclick=()=>action('color','#000000');
+$('example').onclick=()=>{const sample='把资料放在手边\n\n拖动这段文字，找到舒服的位置。\n\n点击“锁定展示”，就能继续操作下面的应用。\n\n想调整时，点击“解锁 · 返回调整”。';$('editor').value=sample;window.glass.text(sample);};
+$('resetPosition').onclick=()=>action('resetPosition');
+$('applyBounds').onclick=()=>{const bounds=Object.fromEntries(['x','y','width','height'].map((key,i)=>[key,Number($(['windowX','windowY','windowWidth','windowHeight'][i]).value)]));if(Object.values(bounds).every(Number.isFinite)&&bounds.width>=320&&bounds.height>=240)action('bounds',bounds);};
+function paintDetails(s){
+ const pdf=currentDoc?.kind==='pdf';$('textStyle').hidden=pdf;$('pdfStyle').hidden=!pdf;
+ for(const key of ['font','spacing','opacity','backdrop','whiteStrength','speed'])$(key+'Value').textContent=['opacity','backdrop','whiteStrength'].includes(key)?Math.round(s[key]*100)+'%':s[key]+(key==='speed'?' 点/秒':'');
+ if(s.bounds)for(const [key,id] of Object.entries({x:'windowX',y:'windowY',width:'windowWidth',height:'windowHeight'}))if(document.activeElement!==$(id))$(id).value=s.bounds[key];
+ $('applyBounds').disabled=s.locked&&s.lockZoom;
+}
 $('open').onclick=()=>window.glass.open();$('cancel').onclick=()=>window.glass.cancel();$('apply').onclick=()=>window.glass.text($('editor').value);
 $('prev').onclick=()=>action('page',state.page-1);$('next').onclick=()=>action('page',state.page+1);$('jump').onclick=()=>action('page',Number($('page').value)-1);$('page').onkeydown=e=>{if(e.key==='Enter')$('jump').click();};
 $('minus').onclick=()=>action('zoom',state.zoom-.1);$('plus').onclick=()=>action('zoom',state.zoom+.1);$('fit').onclick=()=>action('zoom',1);
@@ -15,8 +25,8 @@ $('shortcut').onkeydown=e=>{if(['Control','Alt','Shift','Meta','Tab'].includes(e
 for(const key of ['spacing','opacity','backdrop','whiteStrength'])$(key).oninput=()=>action(key,Number($(key).value));for(const key of ['weight','alignment'])$(key).onchange=()=>action(key,$(key).value);
 $('speed').oninput=()=>action('speed',Number($('speed').value));$('prompting').onclick=()=>action('prompting',!state.prompting);$('promptReset').onclick=()=>action('promptReset');$('recover').onclick=()=>action('recover');$('updates').onclick=()=>action('updates');$('forget').onclick=()=>{if(confirm('清除本机保存的阅读内容和位置？'))action('forget');};$('saveShortcut').onclick=()=>action('shortcut',$('shortcut').value);
 window.glass.listen('prompt-status',text=>$('promptStatus').textContent=text);
-window.glass.listen('state',paint);window.glass.listen('notice',text=>$('notice').textContent=text);
-function showDocument(doc){currentDoc=doc;$('notice').textContent=doc.name;if(doc.kind==='text')$('editor').value=doc.text;paint(state);$('font').disabled=doc.kind==='pdf'||(state.locked&&state.lockZoom);}
+window.glass.listen('state',s=>{paint(s);paintDetails(s);});window.glass.listen('notice',text=>$('notice').textContent=text);
+function showDocument(doc){currentDoc=doc;$('notice').textContent=doc.name;if(doc.kind==='text')$('editor').value=doc.text;paint(state);paintDetails(state);$('font').disabled=doc.kind==='pdf'||(state.locked&&state.lockZoom);}
 window.glass.listen('document',showDocument);
 document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])window.glass.drop(e.dataTransfer.files[0]);});
 const instructions=[['先放入内容','content','① 点击打开文件，或拖入文档。\n② 输入文字后点击“显示这段文字”。','open'],['调整外观','appearance','① 选择文字颜色与字号。\n② 默认黑字、无描边，可按背景调整。','font'],['锁定与恢复','content','① 点击锁定展示，鼠标就能穿透。\n② 点击返回调整，或按 Ctrl + Alt + G 恢复。','lock'],['选择锁定范围','settings','① 翻页和缩放可以分别锁定。\n② 未勾选时，仍能通过面板操作。','settings']];

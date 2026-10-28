@@ -6,14 +6,15 @@ const snapshots=new Set();
 let store,savedSession,saveTimer,importController;
 function saveSession(){if(quitting)return;clearTimeout(saveTimer);saveTimer=setTimeout(()=>{store.write('session',{state:{...state,prompting:false,locked:false},bounds:overlay.getBounds()}).catch(()=>control.webContents.send('notice','阅读位置保存失败，请检查磁盘空间。'));},250);}
 function saveDocument(){return store.write('document',{...doc,bytes:doc.bytes?Buffer.from(doc.bytes).toString('base64'):undefined}).catch(()=>control.webContents.send('notice','阅读内容保存失败，请检查磁盘空间。'));}
-let control,overlay,tray,state={...defaults},doc={kind:'text',text:'透明文字\n\n打开文件，或输入自己的文字。\n调整好位置后，点击锁定展示。',name:'示例'},quitting=false,sequence=0;
+let control,overlay,unlock,tray,state={...defaults},doc={kind:'text',text:'透明文字\n\n打开文件，或输入自己的文字。\n调整好位置后，点击锁定展示。',name:'示例'},quitting=false,sequence=0;
 const windows=()=>[control,overlay].filter(w=>w&&!w.isDestroyed());
 function send(){for(const w of windows())w.webContents.send('state',state);}
 function deliver(){for(const w of windows())w.webContents.send('document',doc);}
-function apply(){for(const win of snapshots){win.setAlwaysOnTop(state.topmost);win.setIgnoreMouseEvents(state.locked);if(state.visible)win.showInactive();else win.hide();}overlay.setAlwaysOnTop(state.topmost);overlay.setIgnoreMouseEvents(state.locked);if(state.visible)overlay.showInactive();else overlay.hide();send();}
+function updateUnlock(){if(!unlock||unlock.isDestroyed())return;if(!state.locked||!state.visible||!overlay.isVisible()){unlock.hide();return;}const b=overlay.getBounds(),area=screen.getDisplayMatching(b).workArea;unlock.setBounds({x:Math.max(area.x,Math.min(b.x+b.width-188,area.x+area.width-176)),y:Math.max(area.y,Math.min(b.y+12,area.y+area.height-44)),width:176,height:44});unlock.setAlwaysOnTop(state.topmost);unlock.showInactive();}
+function apply(){for(const win of snapshots){win.setAlwaysOnTop(state.topmost);win.setIgnoreMouseEvents(state.locked);if(state.visible)win.showInactive();else win.hide();}overlay.setAlwaysOnTop(state.topmost);overlay.setIgnoreMouseEvents(state.locked);if(state.visible)overlay.showInactive();else overlay.hide();updateUnlock();send();}
 function recover(){for(const win of snapshots)win.setBounds(clampBounds(win.getBounds(),screen.getAllDisplays().map(d=>d.workArea)));overlay.setBounds(clampBounds(overlay.getBounds(),screen.getAllDisplays().map(d=>d.workArea)));state=reduce(state,'recover');apply();control.show();control.focus();}
 function secure(win){win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());win.webContents.session.setPermissionRequestHandler((_w,_p,cb)=>cb(false));}
-function allowed(event,role){return event.sender=== (role==='control'?control:overlay)?.webContents;}
+function allowed(event,role){return event.sender=== ({control,overlay,unlock}[role])?.webContents;}
 async function importFile(file){
  importController?.abort();importController=new AbortController();const signal=importController.signal;const id=++sequence;pending=null;control.webContents.send('notice','正在读取…');
  try{
@@ -41,8 +42,10 @@ app.whenReady().then(async()=>{
  else if(restored?.kind==='pdf'&&typeof restored.bytes==='string'&&restored.bytes.length<70000000)doc={...restored,bytes:new Uint8Array(Buffer.from(restored.bytes,'base64'))};
  const area=screen.getPrimaryDisplay().workArea;
  const prefs={preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false};
- control=new BrowserWindow({...clampBounds({width:460,height:670,x:area.x+20,y:area.y+30},[area]),minWidth:Math.min(360,area.width),minHeight:Math.min(460,area.height),title:'透明文字',webPreferences:prefs,icon:path.join(__dirname,'assets/icon.png')});
+ control=new BrowserWindow({...clampBounds({width:460,height:670,x:area.x+20,y:area.y+30},[area]),minWidth:Math.min(360,area.width),minHeight:Math.min(460,area.height),title:'透明文字',alwaysOnTop:true,webPreferences:prefs,icon:path.join(__dirname,'assets/icon.png')});
  overlay=new BrowserWindow({width:Math.min(850,area.width-60),height:Math.min(600,area.height-60),x:area.x+Math.max(30,area.width-900),y:area.y+40,transparent:true,frame:false,hasShadow:false,resizable:true,alwaysOnTop:true,webPreferences:prefs});
+ unlock=new BrowserWindow({width:176,height:44,title:'解锁展示',parent:overlay,show:false,frame:false,resizable:false,skipTaskbar:true,focusable:false,alwaysOnTop:true,webPreferences:prefs});secure(unlock);unlock.loadFile(path.join(__dirname,'unlock.html'));
+ unlock.on('close',event=>{if(!quitting){event.preventDefault();recover();}});
  if(savedSession?.bounds)overlay.setBounds(clampBounds(savedSession.bounds,screen.getAllDisplays().map(d=>d.workArea)));
  overlay.on('move',saveSession);overlay.on('resize',saveSession);
  for(const win of windows())secure(win);
@@ -52,15 +55,18 @@ app.whenReady().then(async()=>{
  const icon=nativeImage.createFromPath(path.join(__dirname,'assets/icon.png')).resize({width:24,height:24});tray=new Tray(icon);tray.setToolTip('透明文字');tray.setContextMenu(Menu.buildFromTemplate([{label:'恢复操作',click:recover},{label:'显示控制面板',click:()=>control.show()},{label:'退出',click:()=>{quitting=true;app.quit();}}]));tray.on('double-click',recover);
  try{state.hotkeyAvailable=globalShortcut.register(state.shortcut||'Control+Alt+G',recover);}catch{state.hotkeyAvailable=false;}apply();
  screen.on('display-removed',()=>{const work=screen.getPrimaryDisplay().workArea;for(const win of [...windows(),...snapshots]){let b=win.getBounds();win.setBounds({x:work.x+20,y:work.y+20,width:Math.min(b.width,work.width-40),height:Math.min(b.height,work.height-40)});}});
- function displayList(){state.displays=screen.getAllDisplays().map((d,i)=>({id:d.id,label:d.label||`屏幕 ${i+1} (${d.size.width} × ${d.size.height})`}));state.displayId=screen.getDisplayMatching(overlay.getBounds()).id;send();}
- screen.on('display-added',displayList);screen.on('display-removed',displayList);overlay.on('move',displayList);displayList();
+ function displayList(){state.displays=screen.getAllDisplays().map((d,i)=>({id:d.id,label:d.label||`屏幕 ${i+1} (${d.size.width} × ${d.size.height})`}));state.bounds=overlay.getBounds();state.displayId=screen.getDisplayMatching(state.bounds).id;updateUnlock();send();}
+ screen.on('display-added',displayList);screen.on('display-removed',displayList);screen.on('display-metrics-changed',displayList);overlay.on('move',displayList);overlay.on('resize',displayList);overlay.on('hide',()=>unlock.hide());displayList();
  Menu.setApplicationMenu(null);
 });
 ipcMain.handle('capture',async event=>{if(!allowed(event,'control'))return;return(await control.webContents.capturePage()).toDataURL();});
 ipcMain.handle('ready',event=>{if(!windows().some(w=>w.webContents===event.sender))return;return{state,doc};});
 ipcMain.handle('action',async(event,command,value)=>{
+ if(allowed(event,'unlock')){if(command==='recover')recover();return;}
  if(!allowed(event,'control')&&!allowed(event,'overlay'))return;
  if(allowed(event,'overlay')&&!['recover','page','zoom'].includes(command))return;
+ if(command==='bounds'){if(state.locked&&state.lockZoom)return;if(!value||!['x','y','width','height'].every(k=>Number.isFinite(value[k])))return;overlay.setBounds(clampBounds(Object.fromEntries(['x','y','width','height'].map(k=>[k,Math.round(value[k])])),screen.getAllDisplays().map(d=>d.workArea)));saveSession();return;}
+ if(command==='resetPosition'){const area=screen.getDisplayMatching(overlay.getBounds()).workArea;const width=Math.min(850,area.width),height=Math.min(600,area.height);overlay.setBounds({x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2),width,height});recover();saveSession();return;}
  if(command==='display'){const target=screen.getAllDisplays().find(d=>d.id===value);if(target){overlay.setBounds(clampBounds({...overlay.getBounds(),x:target.workArea.x+30,y:target.workArea.y+30},[target.workArea]));saveSession();}return;}
  if(command==='clearSnapshots'){for(const win of snapshots)win.close();return;}
  if(command==='snapshot'){
