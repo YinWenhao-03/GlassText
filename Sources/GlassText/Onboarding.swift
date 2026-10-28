@@ -25,7 +25,7 @@ extension App {
         guideProgress.stringValue = "第 \(guideStep+1) 步，共 4 步"
         sectionPicker.selectedSegment = guideStep == 1 ? 1 : 0; switchSection()
         let titles = ["放入你要看的内容","调整到看得清","移动和调整大小","锁定与恢复"]
-        let appearance = pdf == nil ? "② 拖动字号滑块调整大小；上方可以选择白字、黑字或其他颜色。建议保留描边。" : "② 当前是 PDF，可开启或关闭去白底，并调整去白强度。PDF 保留原页布局，不使用文字字号设置。"
+        let appearance = pdf == nil ? "② 拖动字号滑块调整大小；上方可以选择白字、黑字或其他颜色。默认黑字、无描边，可按背景调整。" : "② 当前是 PDF，可开启或关闭去白底，并调整去白强度。PDF 保留原页布局，不使用文字字号设置。"
         let bodies = [
             "① 点击“打开文件…”，选择 PDF、Word 或文本。也可以把文件拖进主界面。\n\n② 在输入框编辑后，点击“显示这段文字”才会更新展示内容。",
             "① 选择顶部“外观”页面。\n\n"+appearance+"\n\n行距、透明度和底板藏在“更多外观设置…”中。",

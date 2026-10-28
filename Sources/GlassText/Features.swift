@@ -94,7 +94,7 @@ extension App {
         fontSlider.doubleValue = min(96, max(16, values["font"] ?? 36)); content.fontSize = CGFloat(fontSlider.doubleValue)
         spacingSlider.doubleValue = values["spacing"] ?? 10; opacitySlider.doubleValue = values["opacity"] ?? 1; backdropSlider.doubleValue = values["backdrop"] ?? 0
         speedSlider.doubleValue = values["speed"] ?? 30; promptSpeed = speedSlider.doubleValue; whiteSlider.doubleValue = values["white"] ?? 1
-        content.ink = NSColor(deviceRed: values["r"] ?? 1, green: values["g"] ?? 1, blue: values["b"] ?? 1, alpha: 1); colorWell.color = content.ink
+        content.ink = NSColor(deviceRed: values["r"] ?? 0, green: values["g"] ?? 0, blue: values["b"] ?? 0, alpha: 1); colorWell.color = content.ink
         weightPicker.selectItem(at: min(2,max(0, defaults.integer(forKey: "weight")))); alignPicker.selectItem(at: min(2,max(0,defaults.integer(forKey: "alignment"))))
         keyPicker.selectItem(at: min(2,max(0,defaults.integer(forKey: "hotkey")))); modePicker.selectItem(at: min(1,max(0, defaults.integer(forKey: "wordMode"))))
         content.outlined = defaults.bool(forKey: "outline"); outlineBox.state = content.outlined ? .on : .off

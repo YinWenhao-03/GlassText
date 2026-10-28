@@ -1,4 +1,4 @@
-# Windows v0.6 预览版
+# Windows v0.6.4 预览版
 
 Electron 45 + PDF.js + Mammoth。目标 Windows 10/11 x64。
 
@@ -18,6 +18,7 @@ Electron 45 + PDF.js + Mammoth。目标 Windows 10/11 x64。
 ```sh
 npm ci
 npm test
+npm run test:electron
 npm start
 npm run build
 ```

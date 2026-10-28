@@ -12,7 +12,7 @@ const {chromium}=require('playwright-core');const {defaults,reduce}=require('../
   let state={...defaults,hotkeyAvailable:true},doc={kind:'text',text:'透明文字\n测试资料\n'.repeat(80),name:'合成测试文档'};
   const broadcast=async(name,value)=>{for(const page of [control,overlay])await page.evaluate(({name,value})=>window.testListeners?.[name]?.(value),{name,value});};
   for(const page of [control,overlay]){
-   page.on('pageerror',e=>errors.push(e.message));
+   page.on('pageerror',e=>{errors.push(e.message);console.error('Renderer exception:',e.message);});
    await page.exposeFunction('testReady',()=>({state,doc}));
    await page.exposeFunction('testAction',async(key,value)=>{state=reduce(state,key,value);await broadcast('state',state);});
    await page.exposeFunction('testPages',async count=>{const next=reduce(state,'pages',count);if(next.pages!==state.pages||next.page!==state.page){state=next;await broadcast('state',state);}});
@@ -31,7 +31,7 @@ const {chromium}=require('playwright-core');const {defaults,reduce}=require('../
   const lockedPage=state.page;await control.evaluate(()=>window.glass.action('page',8));assert.equal(state.page,lockedPage);
   await control.locator('#lock').dispatchEvent('click');await control.locator('[data-tab=prompter]').dispatchEvent('click');await control.evaluate(()=>{const el=document.getElementById('promptMode');el.checked=true;el.dispatchEvent(new Event('change'));});await control.locator('#prompting').dispatchEvent('click');
   await overlay.clock.runFor(3600);assert(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop>0),'prompter scrolls after countdown');
-  await control.locator('#prompting').dispatchEvent('click');const stopped=await overlay.evaluate(()=>document.getElementById('viewport').scrollTop);await overlay.clock.runFor(200);assert.equal(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop),stopped);
+  await control.locator('#prompting').dispatchEvent('click');await overlay.waitForFunction(()=>window.lastPromptStatus==='已暂停');const stopped=await overlay.evaluate(()=>document.getElementById('viewport').scrollTop);await overlay.clock.runFor(200);assert.equal(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop),stopped);
   await control.locator('[data-tab=settings]').dispatchEvent('click');assert(await control.locator('#forget').isVisible());
   await control.locator('#forget').evaluate(el=>el.scrollIntoView());assert.equal(await control.evaluate(()=>document.querySelector('main').scrollHeight>document.querySelector('main').clientHeight),true);
   await control.locator('[data-tab=content]').dispatchEvent('click');

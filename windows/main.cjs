@@ -41,7 +41,7 @@ app.whenReady().then(async()=>{
  else if(restored?.kind==='pdf'&&typeof restored.bytes==='string'&&restored.bytes.length<70000000)doc={...restored,bytes:new Uint8Array(Buffer.from(restored.bytes,'base64'))};
  const area=screen.getPrimaryDisplay().workArea;
  const prefs={preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false};
- control=new BrowserWindow({width:460,height:670,x:area.x+20,y:area.y+30,title:'透明文字',webPreferences:prefs,icon:path.join(__dirname,'assets/icon.png')});
+ control=new BrowserWindow({...clampBounds({width:460,height:670,x:area.x+20,y:area.y+30},[area]),minWidth:Math.min(360,area.width),minHeight:Math.min(460,area.height),title:'透明文字',webPreferences:prefs,icon:path.join(__dirname,'assets/icon.png')});
  overlay=new BrowserWindow({width:Math.min(850,area.width-60),height:Math.min(600,area.height-60),x:area.x+Math.max(30,area.width-900),y:area.y+40,transparent:true,frame:false,hasShadow:false,resizable:true,alwaysOnTop:true,webPreferences:prefs});
  if(savedSession?.bounds)overlay.setBounds(clampBounds(savedSession.bounds,screen.getAllDisplays().map(d=>d.workArea)));
  overlay.on('move',saveSession);overlay.on('resize',saveSession);

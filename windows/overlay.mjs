@@ -13,7 +13,9 @@ function paginate(value){
  }
  if(!pages.length)pages=[''];window.glass.pages(pages.length);
 }
-async function openPDF(bytes){return pdfjs.getDocument({data:new Uint8Array(bytes),isEvalSupported:false,enableXfa:false}).promise;}
+const pdfTasks=new WeakMap();
+async function openPDF(bytes){const task=pdfjs.getDocument({data:new Uint8Array(bytes),isEvalSupported:false,enableXfa:false});try{const document=await task.promise;pdfTasks.set(document,task);return document;}catch(error){await task.destroy().catch(()=>{});throw error;}}
+async function closePDF(document){const task=document&&pdfTasks.get(document);if(task){pdfTasks.delete(document);await task.destroy();}}
 let promptY=0,countdownUntil=0,lastFrame=0,progressTick=0,lastStatus='';
 function promptStatus(value){if(value!==lastStatus){lastStatus=value;window.glass.promptStatus(value);}}
 function reportPosition(){window.glass.progress({promptOffset:promptY,pan:[viewport.scrollLeft,viewport.scrollTop]});}
@@ -28,12 +30,12 @@ function tick(now){
 requestAnimationFrame(tick);
 window.glass.listen('pan',delta=>viewport.scrollBy(delta[0],delta[1]));
 window.glass.listen('candidate',async candidate=>{
- try{const check=await openPDF(candidate.bytes);if(check.numPages<1)throw new Error('PDF 没有页面');await check.destroy();window.glass.pdfResult(candidate.id,null);}catch(error){window.glass.pdfResult(candidate.id,'PDF 无法读取或需要密码。');}
+ let check;try{check=await openPDF(candidate.bytes);if(check.numPages<1)throw new Error('PDF 没有页面');await closePDF(check);window.glass.pdfResult(candidate.id,null);}catch(error){await closePDF(check).catch(()=>{});window.glass.pdfResult(candidate.id,'PDF 无法读取或需要密码。');}
 });
 async function documentChanged(value){
  const id=++generation;const previous=pdfDoc;pdfDoc=null;doc=value;promptY=state.promptOffset||0;renderSerial++;renderTask?.cancel();
- if(value.kind==='pdf'){const next=await openPDF(value.bytes);if(id!==generation){await next.destroy();return;}pdfDoc=next;await previous?.destroy();if(id!==generation)return;window.glass.pages(next.numPages);}
- else{await previous?.destroy();if(id!==generation)return;if(!state.promptMode)paginate(value.text);else window.glass.pages(1);}
+ if(value.kind==='pdf'){const next=await openPDF(value.bytes);if(id!==generation){await closePDF(next);return;}pdfDoc=next;await closePDF(previous);if(id!==generation)return;window.glass.pages(next.numPages);}
+ else{await closePDF(previous);if(id!==generation)return;if(!state.promptMode)paginate(value.text);else window.glass.pages(1);}
  await render();
 }
 async function render(){

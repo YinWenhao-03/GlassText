@@ -52,8 +52,8 @@ final class ContentView: NSView {
     override func scrollWheel(with event: NSEvent) { if pageImage != nil { onPan?(event.scrollingDeltaX, event.scrollingDeltaY) } }
     var zoom: CGFloat = 1 { didSet { scrollingLayout = nil; needsDisplay = true } }
     var fontSize: CGFloat = 36 { didSet { scrollingLayout = nil; needsDisplay = true } }
-    var ink = NSColor.white { didSet { scrollingLayout = nil; needsDisplay = true } }
-    var outlined = true { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var ink = NSColor.black { didSet { scrollingLayout = nil; needsDisplay = true } }
+    var outlined = false { didSet { scrollingLayout = nil; needsDisplay = true } }
     var adjusting = true { didSet { needsDisplay = true } }
     var readingArea: NSRect { NSRect(x: 24, y: 64, width: max(100, bounds.width-48), height: max(100, bounds.height-88)) }
     var pageImage: NSImage? { didSet { needsDisplay = true } }

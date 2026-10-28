@@ -1,0 +1,59 @@
+name: Build and release Mac and Windows
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:electron
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: dist/windows/*.zip
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/build-app.sh
+      - run: dist/GlassText.app/Contents/MacOS/GlassText --self-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-release
+          path: dist/GlassText-macOS.zip
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-release'
+          merge-multiple: true
+          path: release-assets
+      - name: Publish both platforms after successful builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd release-assets
+          sha256sum *.zip > SHA256SUMS.txt
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "GlassText $RELEASE_TAG" --notes-file ../docs/RELEASE_v0.6.4.md *.zip SHA256SUMS.txt

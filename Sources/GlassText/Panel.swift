@@ -47,8 +47,8 @@ extension App {
 
         // Appearance: common choices first; detailed typography stays collapsed.
         fontSlider = NSSlider(value: 36,minValue: 16,maxValue: 96,target: self,action: #selector(changeSize(_:)))
-        colorWell = NSColorWell(); colorWell.color = .white; colorWell.target = self; colorWell.action = #selector(changeColor(_:))
-        outlineBox = NSButton(checkboxWithTitle: "描边，让文字更清楚", target: self, action: #selector(toggleOutline(_:))); outlineBox.state = .on
+        colorWell = NSColorWell(); colorWell.color = .black; colorWell.target = self; colorWell.action = #selector(changeColor(_:))
+        outlineBox = NSButton(checkboxWithTitle: "描边，让文字更清楚", target: self, action: #selector(toggleOutline(_:))); outlineBox.state = .off
         styleRow = column([row([button("白字", #selector(whiteText)), button("黑字", #selector(blackText)), colorWell]), labeled("字号",fontSlider), outlineBox])
         removeWhite = NSButton(checkboxWithTitle: "去除 PDF 白底", target: self, action: #selector(refreshPDF)); removeWhite.state = .on
         whiteSlider = NSSlider(value: 1,minValue: 0,maxValue: 1,target: self,action: #selector(refreshPDF))

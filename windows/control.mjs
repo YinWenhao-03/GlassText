@@ -19,7 +19,7 @@ window.glass.listen('state',paint);window.glass.listen('notice',text=>$('notice'
 function showDocument(doc){currentDoc=doc;$('notice').textContent=doc.name;if(doc.kind==='text')$('editor').value=doc.text;paint(state);$('font').disabled=doc.kind==='pdf'||(state.locked&&state.lockZoom);}
 window.glass.listen('document',showDocument);
 document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])window.glass.drop(e.dataTransfer.files[0]);});
-const instructions=[['先放入内容','content','① 点击打开文件，或拖入文档。\n② 输入文字后点击“显示这段文字”。','open'],['调整外观','appearance','① 选择文字颜色与字号。\n② 建议保持描边，适应不同背景。','font'],['锁定与恢复','content','① 点击锁定展示，鼠标就能穿透。\n② 点击返回调整，或按 Ctrl + Alt + G 恢复。','lock'],['选择锁定范围','settings','① 翻页和缩放可以分别锁定。\n② 未勾选时，仍能通过面板操作。','settings']];
+const instructions=[['先放入内容','content','① 点击打开文件，或拖入文档。\n② 输入文字后点击“显示这段文字”。','open'],['调整外观','appearance','① 选择文字颜色与字号。\n② 默认黑字、无描边，可按背景调整。','font'],['锁定与恢复','content','① 点击锁定展示，鼠标就能穿透。\n② 点击返回调整，或按 Ctrl + Alt + G 恢复。','lock'],['选择锁定范围','settings','① 翻页和缩放可以分别锁定。\n② 未勾选时，仍能通过面板操作。','settings']];
 async function guide(){
  const [title,section,explanation,target]=instructions[step];
  if($('help').open)$('help').close();tab(section);

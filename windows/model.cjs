@@ -1,4 +1,4 @@
-const defaults = {locked:false, lockPaging:false, lockZoom:false, zoom:1, page:0, pages:1, topmost:true, visible:true, color:'#ffffff', font:36, outline:true, removeWhite:true, preserveLayout:false, promptMode:false, prompting:false, speed:30,whiteStrength:1,opacity:1,backdrop:0,spacing:0,weight:'400',alignment:'left'};
+const defaults = {locked:false, lockPaging:false, lockZoom:false, zoom:1, page:0, pages:1, topmost:true, visible:true, color:'#000000', font:36, outline:false, removeWhite:true, preserveLayout:false, promptMode:false, prompting:false, speed:30,whiteStrength:1,opacity:1,backdrop:0,spacing:0,weight:'400',alignment:'left'};
 function reduce(state, command, value) {
   const s = {...defaults, ...state};
   const canPage = !s.locked || !s.lockPaging, canZoom = !s.locked || !s.lockZoom;
