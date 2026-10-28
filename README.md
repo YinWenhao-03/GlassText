@@ -31,7 +31,7 @@ GlassText 是一款桌面悬浮阅读工具。你可以打开文字、PDF 或 Wo
 
 ## Mac / Windows 功能范围
 
-| 功能 | macOS | Windows v0.6.5 预览版 |
+| 功能 | macOS | Windows v0.6.6 预览版 |
 |---|---|---|
 | 文字 / TXT / Markdown | 支持 | 支持 UTF-8 文本 |
 | PDF | 去白开关、强度、缩放、平移 | 去白开关与强度、缩放、平移 |
@@ -49,7 +49,7 @@ GlassText 是一款桌面悬浮阅读工具。你可以打开文字、PDF 或 Wo
 从 [Releases](https://github.com/YinWenhao-03/GlassText/releases) 选择对应附件。
 
 - **Mac**：下载 `GlassText-macOS.zip`，解压后将 `GlassText.app` 拖入“应用程序”。macOS 13+，包含 Apple Silicon 和 Intel 两种架构。更新前退出旧版本。
-- **Windows**：下载 `GlassText-Windows-0.6.5-x64.zip`，完整解压文件夹后运行其中的 `GlassText.exe`，不要只复制 exe。适用于 Windows 10/11 x64。
+- **Windows**：下载 `GlassText-Windows-0.6.6-x64.zip`，完整解压文件夹后运行其中的 `GlassText.exe`，不要只复制 exe。适用于 Windows 10/11 x64。
 - 下载页同时提供 SHA-256 校验文件。
 
 应用尚未取得 Apple 公证或 Windows 代码签名。Mac 首次打开可能需要在系统“隐私与安全性”允许打开；Windows 可能出现未识别应用提示。

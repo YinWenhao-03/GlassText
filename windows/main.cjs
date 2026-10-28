@@ -8,10 +8,10 @@ function saveSession(){if(quitting)return;clearTimeout(saveTimer);saveTimer=setT
 function saveDocument(){return store.write('document',{...doc,bytes:doc.bytes?Buffer.from(doc.bytes).toString('base64'):undefined}).catch(()=>control.webContents.send('notice','阅读内容保存失败，请检查磁盘空间。'));}
 let control,overlay,unlock,tray,state={...defaults},doc={kind:'text',text:'透明文字\n\n打开文件，或输入自己的文字。\n调整好位置后，点击锁定展示。',name:'示例'},quitting=false,sequence=0;
 const windows=()=>[control,overlay].filter(w=>w&&!w.isDestroyed());
-function send(){for(const w of windows())w.webContents.send('state',state);}
+function send(){for(const w of [...windows(),unlock].filter(w=>w&&!w.isDestroyed()))w.webContents.send('state',state);}
 function deliver(){for(const w of windows())w.webContents.send('document',doc);}
-function updateUnlock(){if(!unlock||unlock.isDestroyed())return;if(!state.locked||!state.visible||!overlay.isVisible()){unlock.hide();return;}const b=overlay.getBounds(),area=screen.getDisplayMatching(b).workArea;unlock.setBounds({x:Math.max(area.x,Math.min(b.x+b.width-188,area.x+area.width-176)),y:Math.max(area.y,Math.min(b.y+12,area.y+area.height-44)),width:176,height:44});unlock.setAlwaysOnTop(state.topmost);unlock.showInactive();}
-function apply(){for(const win of snapshots){win.setAlwaysOnTop(state.topmost);win.setIgnoreMouseEvents(state.locked);if(state.visible)win.showInactive();else win.hide();}overlay.setAlwaysOnTop(state.topmost);overlay.setIgnoreMouseEvents(state.locked);if(state.visible)overlay.showInactive();else overlay.hide();updateUnlock();send();}
+function updateUnlock(){if(!unlock||unlock.isDestroyed())return;const b=overlay.getBounds(),area=screen.getDisplayMatching(b).workArea,width=Math.min(760,b.width-24,area.width),height=width<440?136:width<700?104:64;state.toolbarHeight=height;if(!state.visible||!overlay.isVisible()){unlock.hide();return;}unlock.setBounds({x:Math.max(area.x,Math.min(b.x+12,area.x+area.width-width)),y:Math.max(area.y,Math.min(b.y+46,area.y+area.height-height)),width,height});unlock.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');unlock.showInactive();}
+function apply(){for(const win of snapshots){win.setIgnoreMouseEvents(state.locked);if(state.visible)win.showInactive();else win.hide();win.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');}overlay.setIgnoreMouseEvents(state.locked);if(state.visible)overlay.showInactive();else overlay.hide();overlay.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');updateUnlock();send();}
 function recover(){for(const win of snapshots)win.setBounds(clampBounds(win.getBounds(),screen.getAllDisplays().map(d=>d.workArea)));overlay.setBounds(clampBounds(overlay.getBounds(),screen.getAllDisplays().map(d=>d.workArea)));state=reduce(state,'recover');apply();control.show();control.focus();}
 function secure(win){win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());win.webContents.session.setPermissionRequestHandler((_w,_p,cb)=>cb(false));}
 function allowed(event,role){return event.sender=== ({control,overlay,unlock}[role])?.webContents;}
@@ -44,7 +44,7 @@ app.whenReady().then(async()=>{
  const prefs={preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false};
  control=new BrowserWindow({...clampBounds({width:460,height:670,x:area.x+20,y:area.y+30},[area]),minWidth:Math.min(360,area.width),minHeight:Math.min(460,area.height),title:'透明文字',alwaysOnTop:true,webPreferences:prefs,icon:path.join(__dirname,'assets/icon.png')});
  overlay=new BrowserWindow({width:Math.min(850,area.width-60),height:Math.min(600,area.height-60),x:area.x+Math.max(30,area.width-900),y:area.y+40,transparent:true,frame:false,hasShadow:false,resizable:true,alwaysOnTop:true,webPreferences:prefs});
- unlock=new BrowserWindow({width:176,height:44,title:'解锁展示',parent:overlay,show:false,frame:false,resizable:false,skipTaskbar:true,focusable:false,alwaysOnTop:true,webPreferences:prefs});secure(unlock);unlock.loadFile(path.join(__dirname,'unlock.html'));
+ unlock=new BrowserWindow({width:760,height:64,title:'透明文字工具栏',show:false,frame:false,resizable:false,skipTaskbar:true,focusable:false,alwaysOnTop:true,webPreferences:prefs});secure(unlock);unlock.loadFile(path.join(__dirname,'unlock.html'));
  unlock.on('close',event=>{if(!quitting){event.preventDefault();recover();}});
  if(savedSession?.bounds)overlay.setBounds(clampBounds(savedSession.bounds,screen.getAllDisplays().map(d=>d.workArea)));
  overlay.on('move',saveSession);overlay.on('resize',saveSession);
@@ -60,10 +60,10 @@ app.whenReady().then(async()=>{
  Menu.setApplicationMenu(null);
 });
 ipcMain.handle('capture',async event=>{if(!allowed(event,'control'))return;return(await control.webContents.capturePage()).toDataURL();});
-ipcMain.handle('ready',event=>{if(!windows().some(w=>w.webContents===event.sender))return;return{state,doc};});
+ipcMain.handle('ready',event=>{if(![...windows(),unlock].some(w=>w?.webContents===event.sender))return;return{state,doc};});
 ipcMain.handle('action',async(event,command,value)=>{
- if(allowed(event,'unlock')){if(command==='recover')recover();return;}
- if(!allowed(event,'control')&&!allowed(event,'overlay'))return;
+ if(allowed(event,'unlock')&&!['recover','locked','page','zoom','topmost','visible','showSettings','showContent'].includes(command))return;
+ if(!allowed(event,'control')&&!allowed(event,'overlay')&&!allowed(event,'unlock'))return;
  if(allowed(event,'overlay')&&!['recover','page','zoom'].includes(command))return;
  if(command==='bounds'){if(state.locked&&state.lockZoom)return;if(!value||!['x','y','width','height'].every(k=>Number.isFinite(value[k])))return;overlay.setBounds(clampBounds(Object.fromEntries(['x','y','width','height'].map(k=>[k,Math.round(value[k])])),screen.getAllDisplays().map(d=>d.workArea)));saveSession();return;}
  if(command==='resetPosition'){const area=screen.getDisplayMatching(overlay.getBounds()).workArea;const width=Math.min(850,area.width),height=Math.min(600,area.height);overlay.setBounds({x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2),width,height});recover();saveSession();return;}
@@ -78,6 +78,7 @@ ipcMain.handle('action',async(event,command,value)=>{
   await win.loadFile(path.join(__dirname,'snapshot.html'));await win.webContents.executeJavaScript('document.getElementById("image").src='+JSON.stringify(image.toDataURL()));apply();control.webContents.send('notice','已固定当前画面；随主窗口一起锁定或恢复，右键关闭。');return;
  }
  if(command==='recover'){recover();return;}
+ if(command==='showSettings'||command==='showContent'){control.show();control.focus();control.webContents.send('select-tab',command==='showContent'?'content':value==='settings'?'settings':'appearance');return;}
  if(command==='updates'){shell.openExternal('https://github.com/YinWenhao-03/GlassText/releases');return;}
  if(command==='shortcut'&&typeof value==='string'){
   if(!/^(?:(?:Control|Alt|Shift|Super)\+){1,3}[A-Z0-9]$/i.test(value)){control.webContents.send('notice','格式示例：Control+Alt+G，至少包含一个修饰键。');return;}

@@ -1,1 +1,7 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'"><title>解锁展示</title><link rel="stylesheet" href="unlock.css"><button id="unlock" aria-label="解锁展示并返回调整">解锁 · 返回调整</button><script src="unlock.mjs" type="module"></script></html>
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'"><title>透明文字工具栏</title><link rel="stylesheet" href="unlock.css"><body>
+<div class="tools" role="toolbar" aria-label="文本框操作">
+<button id="unlock" class="primary">锁定</button>
+<span class="group"><button id="prevPage" aria-label="上一页">←</button><span id="pageLabel">1 / 1</span><button id="nextPage" aria-label="下一页">→</button></span>
+<span class="group"><button id="minusZoom" aria-label="缩小">−</button><span id="zoomLabel">100%</span><button id="plusZoom" aria-label="放大">＋</button><button id="resetZoom">重置缩放</button></span>
+<button id="pin" aria-pressed="true">置顶</button><button id="content">内容</button><button id="appearance">外观</button><button id="settings">设置</button><button id="hideOverlay">隐藏</button>
+</div><p id="toolbarStatus" role="status">调整中 · 可拖动上方标题移动文本框</p><script src="unlock.mjs" type="module"></script></body></html>

@@ -3,6 +3,7 @@ import * as pdfjs from './node_modules/pdfjs-dist/build/pdf.mjs';
 pdfjs.GlobalWorkerOptions.workerSrc=new URL('./node_modules/pdfjs-dist/build/pdf.worker.mjs',import.meta.url).href;
 let state,doc,pdfDoc,pages=[''],generation=0,renderTask,renderSerial=0;const viewport=document.getElementById('viewport'),text=document.getElementById('text'),canvas=document.getElementById('pdf');
 function paginate(value){
+ viewport.style.top=state.toolbarHeight?state.toolbarHeight+58+'px':'64px';
  const chars=Array.from(value);pages=[];let start=0;const height=viewport.clientHeight;
  text.style.display='block';text.style.fontSize=state.font*state.zoom+'px';text.style.fontWeight=state.weight;text.style.lineHeight=(state.font*state.zoom*1.45+state.spacing)+'px';
  while(start<chars.length){let low=1,high=Math.min(chars.length-start,15000),fit=1;
@@ -39,7 +40,7 @@ async function documentChanged(value){
  await render();
 }
 async function render(){
- if(!state||!doc)return;viewport.style.background=`rgba(0,0,0,${state.backdrop})`;text.style.opacity=canvas.style.opacity=state.opacity;text.style.textAlign=state.alignment;document.body.classList.toggle('locked',state.locked);
+ if(!state||!doc)return;viewport.style.top=(state.toolbarHeight?state.toolbarHeight+58:64)+'px';viewport.style.background=`rgba(0,0,0,${state.backdrop})`;text.style.opacity=canvas.style.opacity=state.opacity;text.style.textAlign=state.alignment;document.body.classList.toggle('locked',state.locked);
  text.style.color=state.color;text.style.fontSize=state.font*state.zoom+'px';text.style.fontWeight=state.weight;text.style.lineHeight=(state.font*state.zoom*1.45+state.spacing)+'px';text.style.textShadow=state.outline?(state.color==='#000000'?'0 1px 1px white,1px 0 1px white,-1px 0 1px white':'0 1px 2px black,1px 0 2px black,-1px 0 2px black'):'none';
  if(doc.kind==='text'){canvas.style.display='none';text.style.display='block';text.textContent=state.promptMode?doc.text:(pages[Math.min(state.page,pages.length-1)]??'');viewport.scrollTop=state.promptMode?promptY:0;return;}
  if(!pdfDoc)return;text.style.display='none';canvas.style.display='block';const serial=++renderSerial;
@@ -60,12 +61,12 @@ async function render(){
  }catch(error){if(error.name!=='RenderingCancelledException')window.glass.reportError('页面无法渲染，请尝试缩小页面或重新打开文件。');}
 }
 window.glass.listen('state',next=>{
- const old=state,reflow=old&&(next.zoom!==old.zoom||next.font!==old.font||next.promptMode!==old.promptMode||next.spacing!==old.spacing||next.weight!==old.weight);
+ const old=state,reflow=old&&(next.zoom!==old.zoom||next.font!==old.font||next.promptMode!==old.promptMode||next.spacing!==old.spacing||next.weight!==old.weight||next.toolbarHeight!==old.toolbarHeight);
  if(next.prompting&&!old?.prompting)countdownUntil=performance.now()+3000;
  if(!next.prompting&&old?.prompting)promptStatus('已暂停');
  state=next;
  if(reflow&&doc?.kind==='text'){if(state.promptMode)window.glass.pages(1);else paginate(doc.text);}
- if(!old||['zoom','font','promptMode','page','color','outline','removeWhite','locked','whiteStrength','opacity','backdrop','spacing','weight','alignment'].some(k=>old[k]!==next[k]))render();
+ if(!old||['zoom','font','promptMode','page','color','outline','removeWhite','locked','whiteStrength','opacity','backdrop','spacing','weight','alignment','toolbarHeight'].some(k=>old[k]!==next[k]))render();
 });
 window.glass.listen('document',value=>documentChanged(value).catch(()=>window.glass.reportError('文档无法恢复，请重新打开文件。')));
 let resizeTimer;window.onresize=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(doc?.kind==='text'&&!state.promptMode)paginate(doc.text);render();},120);};

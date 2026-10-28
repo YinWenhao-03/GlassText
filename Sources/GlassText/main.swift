@@ -55,7 +55,7 @@ final class ContentView: NSView {
     var ink = NSColor.black { didSet { scrollingLayout = nil; needsDisplay = true } }
     var outlined = false { didSet { scrollingLayout = nil; needsDisplay = true } }
     var adjusting = true { didSet { needsDisplay = true } }
-    var readingArea: NSRect { NSRect(x: 24, y: 64, width: max(100, bounds.width-48), height: max(100, bounds.height-88)) }
+    var readingArea: NSRect { NSRect(x: 24, y: 106, width: max(100, bounds.width-48), height: max(100, bounds.height-130)) }
     var pageImage: NSImage? { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -237,7 +237,10 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         overlay.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         overlay.contentView = content; overlay.makeKeyAndOrderFront(nil)
         overlay.delegate = self
-        toolbar = row([button("←", #selector(previous)), button("→", #selector(next)), button("外观", #selector(showPanel)), button("锁定展示", #selector(togglePass)), button("隐藏", #selector(toggleVisible))])
+        let frameActions = row([button("←", #selector(previous)), button("→", #selector(next)), button("锁定", #selector(togglePass)), button("内容", #selector(showOverlayContent)), button("外观", #selector(showOverlayAppearance)), button("设置", #selector(showPreferences))])
+        let frameZoom = row([button("−", #selector(zoomOut)), button("＋", #selector(zoomIn)), button("重置缩放", #selector(resetZoom)), button("置顶开关", #selector(toggleOverlayPin)), button("隐藏", #selector(toggleVisible))])
+        frameActions.spacing = 6; frameZoom.spacing = 6
+        toolbar = column([frameActions,frameZoom],spacing: 6)
         toolbar.wantsLayer = true; toolbar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor; toolbar.layer?.cornerRadius = 8
         toolbar.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(toolbar)
         NSLayoutConstraint.activate([toolbar.topAnchor.constraint(equalTo: content.topAnchor, constant: 12), toolbar.centerXAnchor.constraint(equalTo: content.centerXAnchor)])
@@ -343,6 +346,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleOutline(_ sender: NSButton) { content.outlined = sender.state == .on; saveState() }
     @objc func refreshPDF() { render(); saveState() }
     @objc func showPanel() { panel.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+    @objc func showOverlayContent() { sectionPicker.selectedSegment = 0; switchSection(); showPanel() }
+    @objc func showOverlayAppearance() { sectionPicker.selectedSegment = 1; switchSection(); showPanel() }
+    @objc func toggleOverlayPin() { pinButton.state = pinButton.state == .on ? .off : .on; togglePin() }
     @objc func quit() { NSApp.terminate(nil) }
     @objc func togglePin() { overlay.level = pinButton.state == .on ? .floating : .normal; updateUnlockButton(); saveState() }
     @objc func togglePass() { setLocked(!locked) }
