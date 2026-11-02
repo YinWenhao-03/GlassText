@@ -42,4 +42,4 @@ async function guide(){
  $('helpTitle').textContent=`${step+1}/4 · ${title}`;$('helpText').textContent=explanation;$('helpPrev').disabled=step===0;$('helpNext').textContent=step===3?'完成':'下一步';$('help').showModal();
 }
 $('guide').onclick=()=>{step=0;guide();};$('helpPrev').onclick=()=>{step--;guide();};$('helpNext').onclick=()=>{if(step===3)$('help').close();else{step++;guide();}};$('helpClose').onclick=()=>$('help').close();
-const initial=await window.glass.ready();paint(initial.state);$('shortcut').value=initial.state.shortcut||'Control+Alt+G';showDocument(initial.doc);
+{const initial=await window.glass.ready();paint(initial.state);$('shortcut').value=initial.state.shortcut||'Control+Alt+G';showDocument(initial.doc);}

@@ -23,6 +23,7 @@ const {chromium}=require('playwright-core');const {defaults,reduce}=require('../
   await control.goto(url+'/control.html');await overlay.goto(url+'/overlay.html');
   await control.waitForFunction(()=>document.getElementById('editor').value.length>0);
   await overlay.waitForFunction(()=>document.getElementById('text').textContent.length>0);
+  assert.equal(await overlay.evaluate(()=>performance.getEntriesByType('resource').some(r=>r.name.includes('pdfjs-dist'))),false,'text reading does not load PDF engine');
   assert(state.pages>1,'text paginated');await control.bringToFront();
   await control.locator('#next').dispatchEvent('click');await overlay.waitForTimeout(100);assert.equal(state.page,1);
   await control.locator('#plus').dispatchEvent('click');assert.equal(state.zoom,1.1);
@@ -42,6 +43,14 @@ const {chromium}=require('playwright-core');const {defaults,reduce}=require('../
   assert.equal(await overlay.evaluate(()=>document.getElementById('pdf').getContext('2d').getImageData(0,0,1,1).data[3]),0);
   await control.evaluate(()=>window.glass.action('removeWhite',false));
   await overlay.waitForFunction(()=>document.getElementById('pdf').getContext('2d').getImageData(0,0,1,1).data[3]===255);
+  await overlay.setViewportSize({width:2000,height:1800});
+  await control.evaluate(()=>{window.glass.action('locked',false);window.glass.action('zoom',3);});
+  await overlay.clock.runFor(200);
+  await overlay.waitForFunction(()=>{const c=document.getElementById('pdf');return c.width>2500;});
+  assert(await overlay.evaluate(()=>{const c=document.getElementById('pdf');return c.width*c.height<=8*1024*1024+8192;}),'large zoom stays within 32 MiB canvas budget plus rounding');
+  await control.evaluate(()=>window.glass.action('visible',false));await overlay.waitForFunction(()=>document.getElementById('pdf').width===0);
+  await control.evaluate(()=>window.glass.action('visible',true));await overlay.waitForFunction(()=>document.getElementById('pdf').width>0);
+  await control.evaluate(()=>window.glass.text('切换回文字，释放 PDF 画布'));await overlay.waitForFunction(()=>document.getElementById('pdf').width===0&&document.getElementById('text').textContent.includes('释放 PDF'));
   assert.deepEqual(errors,[]);console.log('PASS: renderer pagination, zoom, lock guards, countdown/scroll/pause, settings overflow, PDF render/background toggle; no renderer exceptions');
  }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

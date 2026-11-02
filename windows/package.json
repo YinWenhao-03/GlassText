@@ -1,6 +1,6 @@
 {
   "name": "glasstext-windows",
-  "version": "0.6.6",
+  "version": "0.6.8",
   "description": "Transparent floating text and document reader",
   "author": "YinWenhao-03",
   "private": true,
@@ -10,7 +10,8 @@
     "test": "node --test test/*.test.cjs",
     "build": "electron-builder --win zip --x64 --publish never",
     "test:browser": "node test/browser-smoke.cjs",
-    "test:electron": "node test/electron-smoke.cjs"
+    "test:electron": "node test/electron-smoke.cjs",
+    "test:memory": "node test/memory-smoke.cjs"
   },
   "build": {
     "appId": "com.yinwenhao.glasstext.windows",
@@ -19,7 +20,10 @@
       "output": "../dist/windows"
     },
     "compression": "maximum",
-    "electronLanguages": ["zh-CN", "en-US"],
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
     "files": [
       "*.cjs",
       "*.html",
@@ -42,6 +46,7 @@
     "artifactName": "GlassText-Windows-${version}-${arch}.${ext}"
   },
   "dependencies": {
+    "koffi": "3.3.6",
     "mammoth": "1.13.0",
     "pdfjs-dist": "6.4.299"
   },

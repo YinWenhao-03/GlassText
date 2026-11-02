@@ -5,4 +5,5 @@ $('unlock').onclick=()=>state.locked?action('recover'):action('locked',true);
 $('prevPage').onclick=()=>action('page',state.page-1);$('nextPage').onclick=()=>action('page',state.page+1);
 $('minusZoom').onclick=()=>action('zoom',state.zoom-.1);$('plusZoom').onclick=()=>action('zoom',state.zoom+.1);$('resetZoom').onclick=()=>action('zoom',1);
 $('pin').onclick=()=>action('topmost',!state.topmost);$('content').onclick=()=>action('showContent');$('appearance').onclick=()=>action('showSettings','appearance');$('settings').onclick=()=>action('showSettings','settings');$('hideOverlay').onclick=()=>action('visible',false);
+document.addEventListener('keydown',event=>{if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.repeat)return;const delta={ArrowLeft:-1,PageUp:-1,ArrowRight:1,PageDown:1}[event.key];if(delta!==undefined){event.preventDefault();action('page',state.page+delta);}});
 window.glass.listen('state',paint);paint((await window.glass.ready()).state);

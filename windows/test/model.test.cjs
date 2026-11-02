@@ -5,6 +5,7 @@ test('lock choices independently prevent paging and zoom',()=>{
  const t={...s,lockPaging:false,lockZoom:true}; assert.equal(reduce(t,'page',3).page,3);assert.equal(reduce(t,'zoom',2).zoom,1);
 });
 test('recover always restores control',()=>{const s=reduce({...defaults,locked:true,visible:false},'recover');assert.equal(s.locked,false);assert.equal(s.visible,true);});
+test('zoom resets PDF pan like the Mac reader without bypassing the zoom lock',()=>{const s={...defaults,pan:[100,200]};assert.deepEqual(reduce(s,'zoom',1.5).pan,[0,0]);assert.deepEqual(reduce({...s,locked:true,lockZoom:true},'zoom',1.5).pan,[100,200]);});
 test('zoom/page boundaries and invalid input',()=>{assert.equal(reduce(defaults,'zoom',100).zoom,3);assert.equal(reduce(defaults,'zoom',0).zoom,.5);assert.equal(reduce(defaults,'zoom',NaN).zoom,1);assert.equal(reduce({...defaults,pages:5},'page',100).page,4);});
 test('paging lock pauses prompter while zoom lock does not',()=>{
  const running={...defaults,promptMode:true,prompting:true,locked:true};

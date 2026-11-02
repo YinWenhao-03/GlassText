@@ -3,15 +3,54 @@ const fs=require('node:fs/promises'),path=require('node:path');
 const mammoth=require('mammoth'); const {defaults,reduce}=require('./model.cjs');
 const {clampBounds,createStore}=require('./storage.cjs');const {convertWord}=require('./convert.cjs');
 const snapshots=new Set();
+const primaryInstance=app.requestSingleInstanceLock();
+if(!primaryInstance)app.quit();
 let store,savedSession,saveTimer,importController;
 function saveSession(){if(quitting)return;clearTimeout(saveTimer);saveTimer=setTimeout(()=>{store.write('session',{state:{...state,prompting:false,locked:false},bounds:overlay.getBounds()}).catch(()=>control.webContents.send('notice','阅读位置保存失败，请检查磁盘空间。'));},250);}
 function saveDocument(){return store.write('document',{...doc,bytes:doc.bytes?Buffer.from(doc.bytes).toString('base64'):undefined}).catch(()=>control.webContents.send('notice','阅读内容保存失败，请检查磁盘空间。'));}
 let control,overlay,unlock,tray,state={...defaults},doc={kind:'text',text:'透明文字\n\n打开文件，或输入自己的文字。\n调整好位置后，点击锁定展示。',name:'示例'},quitting=false,sequence=0;
 const windows=()=>[control,overlay].filter(w=>w&&!w.isDestroyed());
 function send(){for(const w of [...windows(),unlock].filter(w=>w&&!w.isDestroyed()))w.webContents.send('state',state);}
-function deliver(){for(const w of windows())w.webContents.send('document',doc);}
-function updateUnlock(){if(!unlock||unlock.isDestroyed())return;const b=overlay.getBounds(),area=screen.getDisplayMatching(b).workArea,width=Math.min(760,b.width-24,area.width),height=width<440?136:width<700?104:64;state.toolbarHeight=height;if(!state.visible||!overlay.isVisible()){unlock.hide();return;}unlock.setBounds({x:Math.max(area.x,Math.min(b.x+12,area.x+area.width-width)),y:Math.max(area.y,Math.min(b.y+46,area.y+area.height-height)),width,height});unlock.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');unlock.showInactive();}
-function apply(){for(const win of snapshots){win.setIgnoreMouseEvents(state.locked);if(state.visible)win.showInactive();else win.hide();win.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');}overlay.setIgnoreMouseEvents(state.locked);if(state.visible)overlay.showInactive();else overlay.hide();overlay.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');updateUnlock();send();}
+function controlDocument(){return doc.kind==='text'?doc:{kind:doc.kind,name:doc.name};}
+function deliver(){overlay.webContents.send('document',doc);control.webContents.send('document',controlDocument());}
+function updateUnlock(){
+ if(!unlock||unlock.isDestroyed())return;
+ const b=overlay.getBounds(),area=screen.getDisplayMatching(b).workArea,width=Math.min(760,b.width-24,area.width),height=width<440?136:width<700?104:64;
+ state.toolbarHeight=height;
+ if(!state.visible||!overlay.isVisible()){unlock.hide();return;}
+ unlock.setBounds({x:Math.max(area.x,Math.min(b.x+12,area.x+area.width-width)),y:Math.max(area.y,Math.min(b.y+46,area.y+area.height-height)),width,height});
+ unlock.setIgnoreMouseEvents(false);
+ unlock.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');
+ unlock.showInactive();
+ if(state.topmost)unlock.moveTop();
+}
+function applyReaderWindow(win){
+ // Changing focusability on every page/zoom update can deactivate the foreground
+ // fullscreen window on Windows. Only change it when entering/leaving lock mode.
+ if(win.isFocusable()===state.locked)win.setFocusable(!state.locked);
+ win.setIgnoreMouseEvents(state.locked);
+ if(state.visible)win.showInactive();else win.hide();
+ win.setAlwaysOnTop(state.topmost,state.topmost?'floating':'normal');
+}
+let slideshowTimer;
+let slideshowAvailable=true;
+function updateSlideshowWatch(){
+ if(slideshowAvailable && state.visible && state.topmost){
+  if(!slideshowTimer)slideshowTimer=setInterval(()=>{
+   try{
+    require('./slideshow.cjs').restoreAboveShow([...snapshots,overlay,unlock]);
+   }catch(error){
+    clearInterval(slideshowTimer);
+    slideshowTimer=null;
+    slideshowAvailable=false;
+    console.error('Slide show window check failed:',error);
+    control.webContents.send('notice','放映置顶组件未能运行，请完整解压 Windows 版后重新打开。');
+   }
+  },750).unref();
+ }else{clearInterval(slideshowTimer);slideshowTimer=null;}
+}
+app.on('before-quit',()=>clearInterval(slideshowTimer));
+function apply(){for(const win of snapshots)applyReaderWindow(win);applyReaderWindow(overlay);updateUnlock();updateSlideshowWatch();send();}
 function recover(){for(const win of snapshots)win.setBounds(clampBounds(win.getBounds(),screen.getAllDisplays().map(d=>d.workArea)));overlay.setBounds(clampBounds(overlay.getBounds(),screen.getAllDisplays().map(d=>d.workArea)));state=reduce(state,'recover');apply();control.show();control.focus();}
 function secure(win){win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());win.webContents.session.setPermissionRequestHandler((_w,_p,cb)=>cb(false));}
 function allowed(event,role){return event.sender=== ({control,overlay,unlock}[role])?.webContents;}
@@ -34,7 +73,8 @@ async function importFile(file){
 }
 let pending;
 function commit(next){pending=null;doc=next;state.page=0;state.pages=1;state.prompting=false;state.promptOffset=0;state.pan=[0,0];state.visible=true;apply();deliver();saveDocument();saveSession();control.webContents.send('notice',doc.name);}
-app.whenReady().then(async()=>{
+app.on('second-instance',()=>{if(overlay&&control&&!overlay.isDestroyed()&&!control.isDestroyed())recover();});
+if(primaryInstance)app.whenReady().then(async()=>{
  store=createStore(app.getPath('userData'));savedSession=await store.read('session');
  const saved=savedSession?.state||await store.read('settings');
  if(saved){for(const k of ['zoom','font','color','outline','topmost','lockPaging','lockZoom','removeWhite','preserveLayout','promptMode','speed','whiteStrength','opacity','backdrop','spacing','weight','alignment'])state=reduce(state,k,saved[k]);state.page=Math.max(0,Math.trunc(saved.page)||0);state.pages=Math.max(1,state.page+1);state.promptOffset=Math.max(0,Number(saved.promptOffset)||0);state.pan=Array.isArray(saved.pan)?saved.pan:[0,0];state.shortcut=saved.shortcut;}
@@ -44,7 +84,10 @@ app.whenReady().then(async()=>{
  const prefs={preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false};
  control=new BrowserWindow({...clampBounds({width:460,height:670,x:area.x+20,y:area.y+30},[area]),minWidth:Math.min(360,area.width),minHeight:Math.min(460,area.height),title:'透明文字',alwaysOnTop:true,webPreferences:prefs,icon:path.join(__dirname,'assets/icon.png')});
  overlay=new BrowserWindow({width:Math.min(850,area.width-60),height:Math.min(600,area.height-60),x:area.x+Math.max(30,area.width-900),y:area.y+40,transparent:true,frame:false,hasShadow:false,resizable:true,alwaysOnTop:true,webPreferences:prefs});
- unlock=new BrowserWindow({width:760,height:64,title:'透明文字工具栏',show:false,frame:false,resizable:false,skipTaskbar:true,focusable:false,alwaysOnTop:true,webPreferences:prefs});secure(unlock);unlock.loadFile(path.join(__dirname,'unlock.html'));
+ // An owned toolbar stays above its transparent owner in Windows' native z-order.
+ // Windows can pass physical clicks through a non-activating Chromium toolbar.
+ // showInactive avoids stealing focus on updates; actual clicks can activate it.
+ unlock=new BrowserWindow({parent:overlay,width:760,height:64,title:'透明文字工具栏',show:false,frame:false,resizable:false,skipTaskbar:true,focusable:true,alwaysOnTop:true,webPreferences:prefs});secure(unlock);unlock.loadFile(path.join(__dirname,'unlock.html'));
  unlock.on('close',event=>{if(!quitting){event.preventDefault();recover();}});
  if(savedSession?.bounds)overlay.setBounds(clampBounds(savedSession.bounds,screen.getAllDisplays().map(d=>d.workArea)));
  overlay.on('move',saveSession);overlay.on('resize',saveSession);
@@ -60,7 +103,7 @@ app.whenReady().then(async()=>{
  Menu.setApplicationMenu(null);
 });
 ipcMain.handle('capture',async event=>{if(!allowed(event,'control'))return;return(await control.webContents.capturePage()).toDataURL();});
-ipcMain.handle('ready',event=>{if(![...windows(),unlock].some(w=>w?.webContents===event.sender))return;return{state,doc};});
+ipcMain.handle('ready',event=>{if(allowed(event,'overlay'))return{state,doc};if(allowed(event,'control'))return{state,doc:controlDocument()};if(allowed(event,'unlock'))return{state};});
 ipcMain.handle('action',async(event,command,value)=>{
  if(allowed(event,'unlock')&&!['recover','locked','page','zoom','topmost','visible','showSettings','showContent'].includes(command))return;
  if(!allowed(event,'control')&&!allowed(event,'overlay')&&!allowed(event,'unlock'))return;

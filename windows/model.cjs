@@ -3,7 +3,7 @@ function reduce(state, command, value) {
   const s = {...defaults, ...state};
   const canPage = !s.locked || !s.lockPaging, canZoom = !s.locked || !s.lockZoom;
   if (command === 'page' && canPage && Number.isFinite(value)) s.page = Math.min(s.pages-1, Math.max(0, Math.trunc(value)));
-  if (command === 'zoom' && canZoom && Number.isFinite(value)) s.zoom = Math.min(3,Math.max(.5,value));
+  if (command === 'zoom' && canZoom && Number.isFinite(value)) {s.zoom = Math.min(3,Math.max(.5,value));s.pan=[0,0];}
   if (['locked','lockPaging','lockZoom','topmost','visible','outline','removeWhite','preserveLayout','promptMode'].includes(command) && typeof value === 'boolean') s[command] = value;
   if (command === 'font' && canZoom && Number.isFinite(value)) s.font = Math.min(96,Math.max(16,value));
   if (command === 'color' && /^#[0-9a-f]{6}$/i.test(value)) s.color = value;

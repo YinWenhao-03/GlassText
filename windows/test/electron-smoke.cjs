@@ -22,6 +22,12 @@ const {_electron}=require('playwright-core');
   const action=(name,value)=>control.evaluate(([n,v])=>window.glass.action(n,v),[name,value]);
   const ready=()=>control.evaluate(()=>window.glass.ready());
   const toolbar=app.windows().find(p=>p.url().endsWith('/unlock.html'));assert(toolbar);await toolbar.waitForFunction(()=>document.getElementById('unlock').textContent==='锁定');
+  assert.equal(await toolbar.evaluate(async()=>Object.hasOwn(await window.glass.ready(),'doc')),false,'toolbar must not receive document payloads');
+  const {spawn}=require('node:child_process');
+  const duplicate=spawn(require('electron'),[wrapper],{stdio:'ignore'});
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{duplicate.kill();reject(Error('Duplicate instance did not exit'));},10000);duplicate.once('error',e=>{clearTimeout(timer);reject(e);});duplicate.once('exit',code=>{clearTimeout(timer);code===0?resolve():reject(Error('Duplicate instance exited '+code));});});
+  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),3);
+  pass('Second launch reuses the existing session without extra windows or document copies');
   assert(await toolbar.evaluate(()=>Array.from(document.querySelectorAll('button')).every(el=>{const r=el.getBoundingClientRect();return r.bottom<=innerHeight&&r.right<=innerWidth;})));await toolbar.screenshot({path:path.join(out,'textbox-toolbar.png')});
   const environment=await app.evaluate(({app,screen,globalShortcut,BrowserWindow})=>({platform:process.platform,versions:process.versions,userData:app.getPath('userData'),displays:screen.getAllDisplays(),hotkey:globalShortcut.isRegistered('Control+Alt+G'),nativeTopmostAvailable:BrowserWindow.getAllWindows().find(w=>w.getTitle()==='透明文字').isAlwaysOnTop(),tray:globalThis.trays.every(t=>!t.tray.isDestroyed())}));
   assert.equal(environment.platform,'win32');assert.equal(environment.userData,data);assert(environment.tray);pass('Windows startup, isolated data, native tray creation');
@@ -45,7 +51,30 @@ const {_electron}=require('playwright-core');
   const text='Windows 中文测试 😀\n分页与重启恢复。\n'.repeat(100);
   await control.evaluate(t=>window.glass.text(t),text);await control.waitForFunction(()=>document.getElementById('pageStatus').textContent!=='1 / 1');
   await toolbar.locator('#nextPage').click();assert.equal((await ready()).state.page,1);await toolbar.locator('#plusZoom').click();assert.equal((await ready()).state.zoom,1.1);await toolbar.locator('#resetZoom').click();await action('zoom',1.5);assert.equal((await ready()).state.zoom,1.5);
+  await toolbar.keyboard.press('PageDown');assert.equal((await ready()).state.page,2);await toolbar.keyboard.press('PageUp');assert.equal((await ready()).state.page,1);
   await toolbar.locator('#pin').click();await toolbar.waitForFunction(()=>document.getElementById('pin').getAttribute('aria-pressed')==='false');assert.equal((await ready()).state.topmost,false);await toolbar.locator('#pin').click();await toolbar.waitForFunction(()=>document.getElementById('pin').getAttribute('aria-pressed')==='true');await toolbar.locator('#appearance').click();assert(await control.locator('#appearance').isVisible());await toolbar.locator('#settings').click();assert(await control.locator('#settings').isVisible());await toolbar.locator('#content').click();assert(await control.locator('#content').isVisible());pass('Text-frame toolbar paging, zoom, topmost and content/appearance/settings buttons');
+  // Exercise locked paging with a foreground fullscreen window. DOM input below
+  // verifies IPC and native focus policy, not Windows' physical mouse hit-testing.
+  await action('locked',true);
+  const presentationPolicy=()=>app.evaluate(({BrowserWindow})=>{
+   const body=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/overlay.html'));
+   const tools=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/unlock.html'));
+   return {owned:tools.getParentWindow()===body,bodyFocusable:body.isFocusable(),toolbarFocusable:tools.isFocusable(),bodyIgnored:globalThis.ignored.get(body.id),toolbarIgnored:globalThis.ignored.get(tools.id)};
+  });
+  assert.deepEqual(await presentationPolicy(),{owned:true,bodyFocusable:false,toolbarFocusable:true,bodyIgnored:true,toolbarIgnored:false});
+  await app.evaluate(async ({BrowserWindow})=>{globalThis.slideshowTest=new BrowserWindow({fullscreen:true,frame:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});await globalThis.slideshowTest.loadURL('data:text/html,<h1>Fullscreen presentation regression</h1>');globalThis.slideshowTest.focus();});
+  try{
+   assert(await app.evaluate(()=>globalThis.slideshowTest.isFocused()));
+   const page=(await ready()).state.page;
+   await toolbar.locator('#nextPage').click();assert.equal((await ready()).state.page,page+1);
+   await toolbar.locator('#prevPage').click();assert.equal((await ready()).state.page,page);
+   await toolbar.locator('#plusZoom').click();assert.equal((await ready()).state.zoom,1.6);
+   await toolbar.locator('#minusZoom').click();assert.equal((await ready()).state.zoom,1.5);
+   assert(await app.evaluate(()=>globalThis.slideshowTest.isFocused()));
+   assert.deepEqual(await presentationPolicy(),{owned:true,bodyFocusable:false,toolbarFocusable:true,bodyIgnored:true,toolbarIgnored:false});
+  }finally{await app.evaluate(()=>globalThis.slideshowTest.destroy());}
+  await action('locked',false);assert.equal((await presentationPolicy()).bodyFocusable,true);
+  pass('Owned interactive toolbar, locked paging/zoom and fullscreen foreground focus preservation');
   await action('lockPaging',true);await action('lockZoom',true);await action('locked',true);await action('zoom',2);assert.equal((await ready()).state.zoom,1.5);
   const nativeState=await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='透明展示');return {ignored:globalThis.ignored.get(w.id),topmost:w.isAlwaysOnTop()};});assert(nativeState.ignored);if(environment.nativeTopmostAvailable)assert(nativeState.topmost);else console.log('LIMITATION: current desktop does not expose native topmost, including a standalone test window; configuration tested');
   await overlay.screenshot({path:path.join(out,'locked-overlay.png'),omitBackground:true});
@@ -66,6 +95,9 @@ const {_electron}=require('playwright-core');
   let pdf='%PDF-1.4\n',offsets=[];objects.forEach((o,i)=>{offsets.push(Buffer.byteLength(pdf));pdf+=`${i+1} 0 obj\n${o}\nendobj\n`;});const xref=Buffer.byteLength(pdf);pdf+='xref\n0 5\n0000000000 65535 f \n'+offsets.map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   const pdfFile=path.join(data,'中文 PDF.pdf');await fs.writeFile(pdfFile,pdf);await app.evaluate((_,f)=>globalThis.glassTest.importFile(f),pdfFile);
   await overlay.waitForFunction(()=>{const c=document.getElementById('pdf');return c.width>0&&c.style.display==='block';}).catch(async e=>{console.error('Import notice:',await control.locator('#notice').textContent());throw e;});assert.equal((await ready()).doc.kind,'pdf');
+  assert.equal(Object.hasOwn((await ready()).doc,'bytes'),false,'control receives PDF metadata only');
+  await action('visible',false);await overlay.waitForFunction(()=>document.getElementById('pdf').width===0);
+  await action('visible',true);await overlay.waitForFunction(()=>document.getElementById('pdf').width>0);
   assert(await control.locator('#textStyle').evaluate(el=>el.hidden));assert.equal(await control.locator('#pdfStyle').evaluate(el=>el.hidden),false);
   await overlay.waitForFunction(()=>document.getElementById('pdf').getContext('2d').getImageData(0,0,1,1).data[3]===0);
   await action('removeWhite',false);await overlay.waitForFunction(()=>document.getElementById('pdf').getContext('2d').getImageData(0,0,1,1).data[3]===255);
