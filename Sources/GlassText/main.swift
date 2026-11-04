@@ -55,7 +55,7 @@ final class ContentView: NSView {
     var ink = NSColor.black { didSet { scrollingLayout = nil; needsDisplay = true } }
     var outlined = false { didSet { scrollingLayout = nil; needsDisplay = true } }
     var adjusting = true { didSet { needsDisplay = true } }
-    var readingArea: NSRect { NSRect(x: 24, y: 106, width: max(100, bounds.width-48), height: max(100, bounds.height-130)) }
+    var readingArea: NSRect { NSRect(x: 24, y: 140, width: max(100, bounds.width-48), height: max(100, bounds.height-164)) }
     var pageImage: NSImage? { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -115,6 +115,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var page = 0
     var textPages: [String] = []
     var unlockPanel: NSPanel?
+    var unlockButton: NSButton?
+    var lockedPromptButton: NSButton?
+    var overlayPromptButton: NSButton!
     var brandIcon: NSImage?
     var statusItem: NSStatusItem!
     var pinButton: NSButton!
@@ -238,9 +241,11 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         overlay.contentView = content; overlay.makeKeyAndOrderFront(nil)
         overlay.delegate = self
         let frameActions = row([button("←", #selector(previous)), button("→", #selector(next)), button("锁定", #selector(togglePass)), button("内容", #selector(showOverlayContent)), button("外观", #selector(showOverlayAppearance)), button("设置", #selector(showPreferences))])
+        overlayPromptButton = button("开始提词", #selector(togglePrompt))
         let frameZoom = row([button("−", #selector(zoomOut)), button("＋", #selector(zoomIn)), button("重置缩放", #selector(resetZoom)), button("置顶开关", #selector(toggleOverlayPin)), button("隐藏", #selector(toggleVisible))])
+        let framePrompt = row([overlayPromptButton])
         frameActions.spacing = 6; frameZoom.spacing = 6
-        toolbar = column([frameActions,frameZoom],spacing: 6)
+        toolbar = column([frameActions,frameZoom,framePrompt],spacing: 6)
         toolbar.wantsLayer = true; toolbar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor; toolbar.layer?.cornerRadius = 8
         toolbar.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(toolbar)
         NSLayoutConstraint.activate([toolbar.topAnchor.constraint(equalTo: content.topAnchor, constant: 12), toolbar.centerXAnchor.constraint(equalTo: content.centerXAnchor)])
@@ -330,7 +335,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(item("上一页", #selector(previous), "[")); menu.addItem(item("下一页", #selector(next), "]"))
         menu.addItem(item("新建当前页悬浮副本", #selector(newSnapshot)))
         menu.addItem(item("关闭全部副本", #selector(closeSnapshots)))
-        menu.addItem(item("暂停 / 继续提词", #selector(togglePrompt)))
+        let promptItem = item("开始 / 暂停提词", #selector(togglePrompt), "p")
+        promptItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(promptItem)
         menu.addItem(item("查看更新", #selector(checkUpdates)))
         menu.addItem(item("新手引导", #selector(showGuide)))
         menu.addItem(.separator()); menu.addItem(item("退出透明文字", #selector(quit), "q"))

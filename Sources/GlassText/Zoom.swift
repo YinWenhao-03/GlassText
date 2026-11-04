@@ -6,7 +6,7 @@ extension App {
     func refreshInteractionPolicy() {
         pagingControls.forEach { $0.isEnabled = canPage }
         zoomControls.forEach { $0.isEnabled = canZoom }
-        promptButton?.isEnabled = canPage && pdf == nil
+        refreshPromptControls()
         zoomLabel?.stringValue = "\(Int((content.zoom*100).rounded()))%"
         lockSummary?.stringValue = locked ? "已锁定 · 翻页\(canPage ? "允许" : "禁止") · 缩放\(canZoom ? "允许" : "禁止")" : "调整中 · 拖动内容移动窗口"
         if let panRow = panRow { panRow.arrangedSubviews.compactMap { $0 as? NSControl }.forEach { $0.isEnabled = canZoom } }

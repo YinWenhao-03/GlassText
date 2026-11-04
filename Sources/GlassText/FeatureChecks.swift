@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 
 extension App {
     func featureChecks(directory: URL, docx: URL) {
@@ -26,7 +27,8 @@ extension App {
         precondition(unlockPanel?.isVisible == true && overlay.ignoresMouseEvents)
         precondition(unlockPanel?.ignoresMouseEvents == false)
         precondition(unlockPanel?.parent === overlay)
-        precondition((unlockPanel?.contentView as? NSButton)?.title == "解锁 · 返回调整")
+        precondition(unlockButton?.title == "解锁 · 返回调整")
+        precondition(lockedPromptButton?.isEnabled == false)
         let originalFrame = overlay.frame
         overlay.setFrameOrigin(NSPoint(x: originalFrame.minX + 20, y: originalFrame.minY))
         updateUnlockButton()
@@ -35,7 +37,7 @@ extension App {
         overlay.setFrame(originalFrame, display: true)
         toggleVisible(); precondition(unlockPanel?.isVisible == false)
         toggleVisible(); precondition(unlockPanel?.isVisible == true)
-        (unlockPanel?.contentView as? NSButton)?.performClick(nil)
+        unlockButton?.performClick(nil)
         precondition(!locked && !overlay.ignoresMouseEvents && unlockPanel?.isVisible == false)
         setLocked(true)
         let lockedPage = page; next(); zoomIn(); precondition(page == lockedPage && content.zoom == 1)
@@ -56,11 +58,32 @@ extension App {
         let paginationStart = Date(); applyText()
         let paginationTime = Date().timeIntervalSince(paginationStart)
         pageField.stringValue = "2"; jumpPage(); precondition(page == 1)
-        togglePrompt(); precondition(content.continuous && countdownRemaining == 3)
+        overlayPromptButton.performClick(nil); precondition(content.continuous && countdownRemaining == 3)
+        precondition(promptButton.title == "暂停提词" && overlayPromptButton.title == "暂停提词")
+        overlayPromptButton.performClick(nil); precondition(timer == nil && content.countdown.isEmpty)
+        setLocked(true); lockedPromptButton?.performClick(nil)
+        precondition(timer != nil && locked && overlay.ignoresMouseEvents)
         for _ in 0..<3 { lastTick = Date(timeIntervalSinceNow: -1.1); tickPrompt() }
         precondition(countdownRemaining == 0 && content.countdown.isEmpty)
         lastTick = Date(timeIntervalSinceNow: -0.05); tickPrompt(); precondition(content.scrollOffset > 0)
-        pausePrompt(); precondition(timer == nil); exitPrompt(); render()
+        let pausedOffset = content.scrollOffset
+        lockedPromptButton?.performClick(nil); precondition(timer == nil && content.scrollOffset == pausedOffset)
+        precondition(lockedPromptButton?.title == "继续提词" && overlayPromptButton.title == "继续提词")
+        lockedPromptButton?.performClick(nil); precondition(timer != nil && content.scrollOffset == pausedOffset)
+        lockPaging.state = .on; lockOptionsChanged()
+        precondition(timer == nil && lockedPromptButton?.isEnabled == false && !overlayPromptButton.isEnabled)
+        togglePrompt(); precondition(timer == nil)
+        lockPaging.state = .off; lockOptionsChanged(); lockedPromptButton?.performClick(nil)
+        precondition(timer != nil && content.scrollOffset == pausedOffset)
+        content.scrollOffset = max(0, promptHeight-content.readingArea.height)
+        countdownRemaining = 0; tickPrompt(); precondition(timer == nil)
+        lockedPromptButton?.performClick(nil); precondition(timer != nil && content.scrollOffset == 0)
+        pausePrompt(); setLocked(false); exitPrompt(); render()
+        pdf = PDFDocument(); refreshInteractionPolicy(); overlayPromptButton.performClick(nil)
+        precondition(timer == nil && !overlayPromptButton.isEnabled && lockedPromptButton?.isEnabled == false)
+        pdf = nil; refreshInteractionPolicy()
+        let promptMenu = NSApp.mainMenu?.items.first?.submenu?.items.first { $0.action == #selector(togglePrompt) }
+        precondition(promptMenu?.keyEquivalent == "p" && promptMenu?.keyEquivalentModifierMask == [.command, .shift])
         newSnapshot(); precondition(extras.count == 1)
         setLocked(true); precondition(extras[0].ignoresMouseEvents)
         setLocked(false); precondition(!extras[0].ignoresMouseEvents); closeSnapshots(); precondition(extras.isEmpty)

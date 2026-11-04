@@ -45,3 +45,5 @@ GLASSTEXT_BROWSER="/path/to/browser" npm run test:browser
 渲染层禁止 Node 集成，启用 contextIsolation 和 sandbox，拒绝新窗口/导航及权限请求；IPC 校验发送窗口。导入上限 50 MB。普通文件解析取消会丢弃迟到结果；Word 转换会请求终止转换进程。
 
 固定画面保存创建时的页面。开发计划见 [ROADMAP.md](../ROADMAP.md)，Windows 系统级测试项目见 [TESTING.md](../TESTING.md)。
+
+工具栏新增“开始提词 / 暂停提词”按钮，点击自动启用连续提词，暂停后继续保留位置。工具栏或控制面板有焦点时也可按 `Ctrl+Shift+P` 切换。PDF 和锁定时禁止翻页的情况下不可提词。

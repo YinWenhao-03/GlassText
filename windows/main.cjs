@@ -10,12 +10,13 @@ function saveSession(){if(quitting)return;clearTimeout(saveTimer);saveTimer=setT
 function saveDocument(){return store.write('document',{...doc,bytes:doc.bytes?Buffer.from(doc.bytes).toString('base64'):undefined}).catch(()=>control.webContents.send('notice','阅读内容保存失败，请检查磁盘空间。'));}
 let control,overlay,unlock,tray,state={...defaults},doc={kind:'text',text:'透明文字\n\n打开文件，或输入自己的文字。\n调整好位置后，点击锁定展示。',name:'示例'},quitting=false,sequence=0;
 const windows=()=>[control,overlay].filter(w=>w&&!w.isDestroyed());
-function send(){for(const w of [...windows(),unlock].filter(w=>w&&!w.isDestroyed()))w.webContents.send('state',state);}
+function readerState(){return {...state,documentKind:doc.kind};}
+function send(){for(const w of [...windows(),unlock].filter(w=>w&&!w.isDestroyed()))w.webContents.send('state',readerState());}
 function controlDocument(){return doc.kind==='text'?doc:{kind:doc.kind,name:doc.name};}
 function deliver(){overlay.webContents.send('document',doc);control.webContents.send('document',controlDocument());}
 function updateUnlock(){
  if(!unlock||unlock.isDestroyed())return;
- const b=overlay.getBounds(),area=screen.getDisplayMatching(b).workArea,width=Math.min(760,b.width-24,area.width),height=width<440?136:width<700?104:64;
+ const b=overlay.getBounds(),area=screen.getDisplayMatching(b).workArea,width=Math.min(760,b.width-24,area.width),height=width<440?168:width<760?136:104;
  state.toolbarHeight=height;
  if(!state.visible||!overlay.isVisible()){unlock.hide();return;}
  unlock.setBounds({x:Math.max(area.x,Math.min(b.x+12,area.x+area.width-width)),y:Math.max(area.y,Math.min(b.y+46,area.y+area.height-height)),width,height});
@@ -87,7 +88,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
  // An owned toolbar stays above its transparent owner in Windows' native z-order.
  // Windows can pass physical clicks through a non-activating Chromium toolbar.
  // showInactive avoids stealing focus on updates; actual clicks can activate it.
- unlock=new BrowserWindow({parent:overlay,width:760,height:64,title:'透明文字工具栏',show:false,frame:false,resizable:false,skipTaskbar:true,focusable:true,alwaysOnTop:true,webPreferences:prefs});secure(unlock);unlock.loadFile(path.join(__dirname,'unlock.html'));
+ unlock=new BrowserWindow({parent:overlay,width:760,height:104,title:'透明文字工具栏',show:false,frame:false,resizable:false,skipTaskbar:true,focusable:true,alwaysOnTop:true,webPreferences:prefs});secure(unlock);unlock.loadFile(path.join(__dirname,'unlock.html'));
  unlock.on('close',event=>{if(!quitting){event.preventDefault();recover();}});
  if(savedSession?.bounds)overlay.setBounds(clampBounds(savedSession.bounds,screen.getAllDisplays().map(d=>d.workArea)));
  overlay.on('move',saveSession);overlay.on('resize',saveSession);
@@ -103,11 +104,17 @@ if(primaryInstance)app.whenReady().then(async()=>{
  Menu.setApplicationMenu(null);
 });
 ipcMain.handle('capture',async event=>{if(!allowed(event,'control'))return;return(await control.webContents.capturePage()).toDataURL();});
-ipcMain.handle('ready',event=>{if(allowed(event,'overlay'))return{state,doc};if(allowed(event,'control'))return{state,doc:controlDocument()};if(allowed(event,'unlock'))return{state};});
+ipcMain.handle('ready',event=>{if(allowed(event,'overlay'))return{state:readerState(),doc};if(allowed(event,'control'))return{state:readerState(),doc:controlDocument()};if(allowed(event,'unlock'))return{state:readerState()};});
 ipcMain.handle('action',async(event,command,value)=>{
- if(allowed(event,'unlock')&&!['recover','locked','page','zoom','topmost','visible','showSettings','showContent'].includes(command))return;
+ if(allowed(event,'unlock')&&!['recover','locked','page','zoom','topmost','visible','showSettings','showContent','togglePrompt'].includes(command))return;
  if(!allowed(event,'control')&&!allowed(event,'overlay')&&!allowed(event,'unlock'))return;
  if(allowed(event,'overlay')&&!['recover','page','zoom'].includes(command))return;
+ if(command==='togglePrompt'){
+  if(doc.kind!=='text'||!state.visible||(state.locked&&state.lockPaging))return;
+  const running=state.prompting;
+  state=reduce(state,'promptMode',true);state=reduce(state,'prompting',!running);
+  apply();saveSession();return;
+ }
  if(command==='bounds'){if(state.locked&&state.lockZoom)return;if(!value||!['x','y','width','height'].every(k=>Number.isFinite(value[k])))return;overlay.setBounds(clampBounds(Object.fromEntries(['x','y','width','height'].map(k=>[k,Math.round(value[k])])),screen.getAllDisplays().map(d=>d.workArea)));saveSession();return;}
  if(command==='resetPosition'){const area=screen.getDisplayMatching(overlay.getBounds()).workArea;const width=Math.min(850,area.width),height=Math.min(600,area.height);overlay.setBounds({x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2),width,height});recover();saveSession();return;}
  if(command==='display'){const target=screen.getAllDisplays().find(d=>d.id===value);if(target){overlay.setBounds(clampBounds({...overlay.getBounds(),x:target.workArea.x+30,y:target.workArea.y+30},[target.workArea]));saveSession();}return;}

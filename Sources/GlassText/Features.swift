@@ -22,21 +22,31 @@ extension App {
     }
     @objc func changeSpeed(_ slider: NSSlider) { promptSpeed = slider.doubleValue; saveState() }
     @objc func changeKey() { registerRecoveryKey(); saveState() }
+    func refreshPromptControls() {
+        let ended = content.continuous && content.scrollOffset >= max(0, promptHeight-content.readingArea.height)
+        let title = timer != nil ? "暂停提词" : content.continuous && !ended ? "继续提词" : "开始提词"
+        for button in [promptButton, overlayPromptButton, lockedPromptButton].compactMap({ $0 }) {
+            button.title = title
+            button.isEnabled = canPage && pdf == nil
+            button.toolTip = pdf != nil ? "仅支持纯文字提词" : !canPage ? "请先关闭“锁定展示时，禁止翻页与提词”" : "开始或暂停滚动，暂停保留位置 · ⇧⌘P"
+        }
+    }
     func pausePrompt() {
         timer?.invalidate(); timer = nil; content.countdown = ""
-        promptButton?.title = content.continuous ? "继续提词" : "开始提词（3 秒倒计时）"
+        refreshPromptControls()
     }
-    func exitPrompt() { pausePrompt(); content.continuous = false; content.scrollOffset = 0 }
+    func exitPrompt() { pausePrompt(); content.continuous = false; content.scrollOffset = 0; refreshPromptControls() }
     @objc func restartPrompt() { guard canPage else { return }; exitPrompt(); if pdf == nil { togglePrompt() } }
     @objc func togglePrompt() {
         guard pdf == nil, canPage else { return }
         if timer != nil { pausePrompt(); return }
         if !content.continuous { content.continuous = true; content.scrollOffset = 0; content.text = sourceText }
+        promptHeight = measuredPromptHeight()
+        if content.scrollOffset >= max(0, promptHeight-content.readingArea.height) { content.scrollOffset = 0 }
         countdownRemaining = 3; content.countdown = "3"; lastTick = Date()
-        promptButton.title = "暂停提词"
         let ticker = Timer(timeInterval: 1.0/30, repeats: true) { [weak self] _ in self?.tickPrompt() }
         timer = ticker; RunLoop.main.add(ticker, forMode: .common)
-        promptHeight = measuredPromptHeight(); overlay.orderFrontRegardless()
+        refreshPromptControls(); overlay.orderFrontRegardless()
     }
     func measuredPromptHeight() -> CGFloat { content.scrollTextHeight }
     func tickPrompt() {
@@ -48,7 +58,7 @@ extension App {
         lastTick = now
         let limit = max(0, promptHeight-content.readingArea.height)
         content.scrollOffset = min(limit, content.scrollOffset + CGFloat(min(0.1, elapsed)*promptSpeed))
-        if content.scrollOffset >= limit { pausePrompt(); promptButton.title = "已到末尾 · 从头开始" }
+        if content.scrollOffset >= limit { pausePrompt() }
     }
     func refreshScreens() {
         screenPicker.removeAllItems(); screenPicker.addItems(withTitles: NSScreen.screens.map { $0.localizedName })

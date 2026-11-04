@@ -67,7 +67,7 @@ async function render(){
 }
 window.glass.listen('state',next=>{
  const old=state,reflow=old&&(next.zoom!==old.zoom||next.font!==old.font||next.promptMode!==old.promptMode||next.spacing!==old.spacing||next.weight!==old.weight||next.toolbarHeight!==old.toolbarHeight);
- if(next.prompting&&!old?.prompting)countdownUntil=performance.now()+3000;
+ if(next.prompting&&!old?.prompting){countdownUntil=performance.now()+3000;if(old?.promptMode&&doc?.kind==='text'&&promptY>=Math.max(0,text.scrollHeight-viewport.clientHeight)){promptY=0;viewport.scrollTop=0;}}
  if(!next.prompting&&old?.prompting)promptStatus('已暂停');
  state=next;
  updatePromptLoop();
