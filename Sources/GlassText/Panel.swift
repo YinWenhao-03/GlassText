@@ -65,7 +65,7 @@ extension App {
 
         promptButton = button("开始提词",#selector(togglePrompt))
         speedSlider = NSSlider(value: 30,minValue: 5,maxValue: 100,target: self,action: #selector(changeSpeed(_:)))
-        let prompter = column([NSTextField(labelWithString: "解放双手，让文字慢慢向上滚动"),note("开始前倒计时 3 秒。随时可以暂停，继续时保留位置。仅支持纯文字。"),row([promptButton,button("从头开始",#selector(restartPrompt))]),labeled("滚动速度",speedSlider),note("左慢右快 · 5–100 点/秒")],spacing: 20)
+        let prompter = column([NSTextField(labelWithString: "解放双手，让文字慢慢向上滚动"),note("首次开始或从头开始时倒计时 3 秒。暂停后从原位置立即继续。仅支持纯文字。"),row([promptButton,button("从头开始",#selector(restartPrompt))]),labeled("滚动速度",speedSlider),note("左慢右快 · 5–100 点/秒")],spacing: 20)
         sections = [contentSection,appearance,prompter]
         let body = NSView(); body.translatesAutoresizingMaskIntoConstraints = false; surface.addSubview(body)
         NSLayoutConstraint.activate([body.topAnchor.constraint(equalTo: header.bottomAnchor,constant: 22),body.leadingAnchor.constraint(equalTo: surface.leadingAnchor,constant: 24),body.trailingAnchor.constraint(equalTo: surface.trailingAnchor,constant: -24),body.heightAnchor.constraint(equalToConstant: 310)])

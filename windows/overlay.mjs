@@ -17,18 +17,18 @@ function paginate(value){
 const pdfTasks=new WeakMap();
 async function openPDF(bytes){const pdfjs=await loadPDFJS();const task=pdfjs.getDocument({data:new Uint8Array(bytes),isEvalSupported:false,enableXfa:false});try{const document=await task.promise;pdfTasks.set(document,task);return document;}catch(error){await task.destroy().catch(()=>{});throw error;}}
 async function closePDF(document){const task=document&&pdfTasks.get(document);if(task){pdfTasks.delete(document);await task.destroy();}}
-let promptY=0,countdownUntil=0,lastFrame=0,progressTick=0,lastStatus='',promptFrame=null;
+let promptY=0,countdownUntil=0,lastFrame=0,progressTick=0,lastStatus='',promptFrame=null,promptStarted=false;
 function shouldPrompt(){return state?.visible&&state.prompting&&state.promptMode&&doc?.kind==='text'&&(!state.locked||!state.lockPaging);}
 function updatePromptLoop(){if(shouldPrompt()){if(promptFrame===null){lastFrame=0;promptFrame=requestAnimationFrame(tick);}}else if(promptFrame!==null){cancelAnimationFrame(promptFrame);promptFrame=null;lastFrame=0;}}
 function promptStatus(value){if(value!==lastStatus){lastStatus=value;window.glass.promptStatus(value);}}
 function reportPosition(){window.glass.progress({promptOffset:promptY,pan:[viewport.scrollLeft,viewport.scrollTop]});}
 viewport.addEventListener('scroll',()=>{if(!progressTick)progressTick=setTimeout(()=>{progressTick=0;reportPosition();},250);});
-window.glass.listen('prompt-reset',()=>{promptY=0;viewport.scrollTop=0;});
+window.glass.listen('prompt-reset',()=>{promptY=0;viewport.scrollTop=0;promptStarted=shouldPrompt();if(promptStarted)countdownUntil=performance.now()+3000;});
 function tick(now){
  promptFrame=null;
  if(shouldPrompt()){
   if(now<countdownUntil){promptStatus('准备：'+Math.ceil((countdownUntil-now)/1000));}
-  else {promptStatus('提词中');promptY+=Math.min(100,now-(lastFrame||now))/1000*state.speed;const end=Math.max(0,text.scrollHeight-viewport.clientHeight);promptY=Math.min(promptY,end);viewport.scrollTop=promptY;if(promptY>=end){state.prompting=false;promptStatus('已到结尾');}}
+  else {promptStatus('提词中');promptY+=Math.min(100,now-(lastFrame||now))/1000*state.speed;const end=Math.max(0,text.scrollHeight-viewport.clientHeight);promptY=Math.min(promptY,end);viewport.scrollTop=promptY;if(promptY>=end){promptStarted=false;state.prompting=false;promptStatus('已到结尾');}}
  }lastFrame=now;if(shouldPrompt())promptFrame=requestAnimationFrame(tick);
 }
 window.glass.listen('pan',delta=>viewport.scrollBy(delta[0],delta[1]));
@@ -36,7 +36,7 @@ window.glass.listen('candidate',async candidate=>{
  let check;try{check=await openPDF(candidate.bytes);if(check.numPages<1)throw new Error('PDF 没有页面');await closePDF(check);window.glass.pdfResult(candidate.id,null);}catch(error){await closePDF(check).catch(()=>{});window.glass.pdfResult(candidate.id,'PDF 无法读取或需要密码。');}
 });
 async function documentChanged(value){
- const id=++generation;const previous=pdfDoc;pdfDoc=null;lastPDFPage=null;doc=value.kind==='pdf'?{kind:value.kind,name:value.name}:value;promptY=state.promptOffset||0;renderSerial++;renderTask?.cancel();updatePromptLoop();
+ const id=++generation;const previous=pdfDoc;pdfDoc=null;lastPDFPage=null;doc=value.kind==='pdf'?{kind:value.kind,name:value.name}:value;promptY=state.promptOffset||0;promptStarted=state.promptMode&&promptY>0;renderSerial++;renderTask?.cancel();updatePromptLoop();
  if(value.kind==='pdf'){pages=[''];const next=await openPDF(value.bytes);if(id!==generation){await closePDF(next);return;}pdfDoc=next;await closePDF(previous);if(id!==generation)return;window.glass.pages(next.numPages);}
  else{await closePDF(previous);if(id!==generation)return;if(!state.promptMode)paginate(value.text);else window.glass.pages(1);}
  await render();
@@ -67,7 +67,13 @@ async function render(){
 }
 window.glass.listen('state',next=>{
  const old=state,reflow=old&&(next.zoom!==old.zoom||next.font!==old.font||next.promptMode!==old.promptMode||next.spacing!==old.spacing||next.weight!==old.weight||next.toolbarHeight!==old.toolbarHeight);
- if(next.prompting&&!old?.prompting){countdownUntil=performance.now()+3000;if(old?.promptMode&&doc?.kind==='text'&&promptY>=Math.max(0,text.scrollHeight-viewport.clientHeight)){promptY=0;viewport.scrollTop=0;}}
+ if(!next.promptMode)promptStarted=false;
+ if(next.prompting&&!old?.prompting){
+  const atEnd=old?.promptMode&&doc?.kind==='text'&&promptY>0&&promptY>=Math.max(0,text.scrollHeight-viewport.clientHeight);
+  if(atEnd){promptY=0;viewport.scrollTop=0;}
+  countdownUntil=!promptStarted||atEnd?performance.now()+3000:0;
+  promptStarted=true;
+ }
  if(!next.prompting&&old?.prompting)promptStatus('已暂停');
  state=next;
  updatePromptLoop();

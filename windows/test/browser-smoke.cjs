@@ -14,7 +14,7 @@ const {chromium}=require('playwright-core');const {defaults,reduce}=require('../
   for(const page of [control,overlay,toolbar]){
    page.on('pageerror',e=>{errors.push(e.message);console.error('Renderer exception:',e.message);});
    await page.exposeFunction('testReady',()=>({state:{...state,documentKind:doc.kind},doc}));
-   await page.exposeFunction('testAction',async(key,value)=>{if(key==='togglePrompt'){if(doc.kind!=='text'||!state.visible||(state.locked&&state.lockPaging))return;const running=state.prompting;state=reduce(state,'promptMode',true);state=reduce(state,'prompting',!running);}else state=reduce(state,key,value);await broadcast('state',state);});
+   await page.exposeFunction('testAction',async(key,value)=>{if(key==='promptReset'){state.promptOffset=0;await broadcast('prompt-reset');return;}if(key==='togglePrompt'){if(doc.kind!=='text'||!state.visible||(state.locked&&state.lockPaging))return;const running=state.prompting;state=reduce(state,'promptMode',true);state=reduce(state,'prompting',!running);}else state=reduce(state,key,value);await broadcast('state',state);});
    await page.exposeFunction('testPages',async count=>{const next=reduce(state,'pages',count);if(next.pages!==state.pages||next.page!==state.page){state=next;await broadcast('state',state);}});
    await page.exposeFunction('testProgress',value=>{state.promptOffset=value.promptOffset;});
    await page.exposeFunction('testPromptStatus',async value=>{await overlay.evaluate(v=>window.lastPromptStatus=v,value);if(value==='已到结尾'){state.prompting=false;await broadcast('state',state);}});
@@ -40,11 +40,16 @@ const {chromium}=require('playwright-core');const {defaults,reduce}=require('../
   await toolbar.bringToFront();await toolbar.setViewportSize({width:760,height:104});
   await toolbar.locator('#togglePrompt').click();assert(state.promptMode&&state.prompting&&state.locked);
   await overlay.clock.runFor(1500);const duringCountdown=await overlay.evaluate(()=>document.getElementById('viewport').scrollTop);
+  await overlay.waitForFunction(()=>window.lastPromptStatus?.startsWith('准备：'));
   await toolbar.locator('#togglePrompt').click();await overlay.clock.runFor(4000);assert.equal(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop),duringCountdown,'countdown can be cancelled');
-  await toolbar.locator('#togglePrompt').click();await overlay.clock.runFor(3600);
+  await toolbar.locator('#togglePrompt').click();await overlay.clock.runFor(300);
   const advanced=await overlay.evaluate(()=>document.getElementById('viewport').scrollTop);assert(advanced>duringCountdown);
-  await toolbar.locator('#togglePrompt').click();await overlay.clock.runFor(300);assert.equal(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop),advanced);
-  await toolbar.keyboard.press('Control+Shift+P');assert(state.prompting);await overlay.clock.runFor(3600);assert(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop)>advanced);
+  await toolbar.locator('#togglePrompt').click();await overlay.waitForFunction(()=>window.lastPromptStatus==='已暂停');
+  const paused=await overlay.evaluate(()=>document.getElementById('viewport').scrollTop);
+  await overlay.clock.runFor(300);assert.equal(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop),paused);
+  await toolbar.keyboard.press('Control+Shift+P');assert(state.prompting);await overlay.clock.runFor(300);assert(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop)>paused,'resume scrolls before a countdown could finish');
+  await control.evaluate(()=>window.glass.action('promptReset'));await overlay.clock.runFor(1000);assert.equal(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop),0,'restart holds the scroll at the top during countdown');
+  await overlay.clock.runFor(2400);assert(await overlay.evaluate(()=>document.getElementById('viewport').scrollTop)>0,'restart scrolls after countdown');
   await control.evaluate(()=>window.glass.action('lockPaging',true));assert(!state.prompting);assert(await toolbar.locator('#togglePrompt').isDisabled());
   await toolbar.keyboard.press('Control+Shift+P');assert(!state.prompting);
   await control.evaluate(()=>window.glass.action('lockPaging',false));

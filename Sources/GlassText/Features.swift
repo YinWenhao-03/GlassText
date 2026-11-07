@@ -32,7 +32,7 @@ extension App {
         }
     }
     func pausePrompt() {
-        timer?.invalidate(); timer = nil; content.countdown = ""
+        timer?.invalidate(); timer = nil; countdownRemaining = 0; content.countdown = ""
         refreshPromptControls()
     }
     func exitPrompt() { pausePrompt(); content.continuous = false; content.scrollOffset = 0; refreshPromptControls() }
@@ -40,10 +40,13 @@ extension App {
     @objc func togglePrompt() {
         guard pdf == nil, canPage else { return }
         if timer != nil { pausePrompt(); return }
-        if !content.continuous { content.continuous = true; content.scrollOffset = 0; content.text = sourceText }
+        let firstStart = !content.continuous
+        if firstStart { content.continuous = true; content.scrollOffset = 0; content.text = sourceText }
         promptHeight = measuredPromptHeight()
-        if content.scrollOffset >= max(0, promptHeight-content.readingArea.height) { content.scrollOffset = 0 }
-        countdownRemaining = 3; content.countdown = "3"; lastTick = Date()
+        let atEnd = content.scrollOffset >= max(0, promptHeight-content.readingArea.height)
+        if atEnd { content.scrollOffset = 0 }
+        countdownRemaining = firstStart || atEnd ? 3 : 0
+        content.countdown = countdownRemaining > 0 ? "3" : ""; lastTick = Date()
         let ticker = Timer(timeInterval: 1.0/30, repeats: true) { [weak self] _ in self?.tickPrompt() }
         timer = ticker; RunLoop.main.add(ticker, forMode: .common)
         refreshPromptControls(); overlay.orderFrontRegardless()
